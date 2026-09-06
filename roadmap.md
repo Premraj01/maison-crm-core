@@ -5,4 +5,4 @@
 - [x] Dashboard and leads workflows
 - [x] Customers and customer detail
 - [x] Team, permissions, settings, components, sign-in
-- [ ] Verify build, interactions, and responsive layouts
+- [x] Verify build, interactions, and responsive layouts

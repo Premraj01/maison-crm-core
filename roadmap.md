@@ -1,8 +1,8 @@
 # Maison CRM roadmap
-- [ ] Theme, global tokens, and providers
-- [ ] Typed sample data and permissions
-- [ ] App shell and shared CRM components
-- [ ] Dashboard and leads workflows
-- [ ] Customers and customer detail
-- [ ] Team, permissions, settings, components, sign-in
+- [x] Theme, global tokens, and providers
+- [x] Typed sample data and permissions
+- [x] App shell and shared CRM components
+- [x] Dashboard and leads workflows
+- [x] Customers and customer detail
+- [x] Team, permissions, settings, components, sign-in
 - [ ] Verify build, interactions, and responsive layouts

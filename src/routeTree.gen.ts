@@ -12,8 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as LeadsRouteImport } from './routes/leads'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as TeamRouteImport } from './routes/team'
 import { Route as CustomersCustomerIdRouteImport } from './routes/customers.$customerId'
+import { Route as TeamIndexRouteImport } from './routes/team.index'
 import { Route as TeamPermissionsRouteImport } from './routes/team.permissions'
 
 const IndexRoute = IndexRouteImport.update({
@@ -31,6 +34,16 @@ const LeadsRoute = LeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TeamRoute = TeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -40,6 +53,11 @@ const CustomersCustomerIdRoute = CustomersCustomerIdRouteImport.update({
   id: '/$customerId',
   path: '/$customerId',
   getParentRoute: () => CustomersRoute,
+} as any)
+const TeamIndexRoute = TeamIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TeamRoute,
 } as any)
 const TeamPermissionsRoute = TeamPermissionsRouteImport.update({
   id: '/permissions',
@@ -51,26 +69,34 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/customers': typeof CustomersRouteWithChildren
   '/leads': typeof LeadsRoute
+  '/settings': typeof SettingsRoute
+  '/sign-in': typeof SignInRoute
   '/team': typeof TeamRouteWithChildren
   '/customers/$customerId': typeof CustomersCustomerIdRoute
   '/team/permissions': typeof TeamPermissionsRoute
+  '/team/': typeof TeamIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/customers': typeof CustomersRouteWithChildren
   '/leads': typeof LeadsRoute
-  '/team': typeof TeamRouteWithChildren
+  '/settings': typeof SettingsRoute
+  '/sign-in': typeof SignInRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
   '/team/permissions': typeof TeamPermissionsRoute
+  '/team': typeof TeamIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/customers': typeof CustomersRouteWithChildren
   '/leads': typeof LeadsRoute
+  '/settings': typeof SettingsRoute
+  '/sign-in': typeof SignInRoute
   '/team': typeof TeamRouteWithChildren
   '/customers/$customerId': typeof CustomersCustomerIdRoute
   '/team/permissions': typeof TeamPermissionsRoute
+  '/team/': typeof TeamIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -78,31 +104,41 @@ export interface FileRouteTypes {
     | '/'
     | '/customers'
     | '/leads'
+    | '/settings'
+    | '/sign-in'
     | '/team'
     | '/customers/$customerId'
     | '/team/permissions'
+    | '/team/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/customers'
     | '/leads'
-    | '/team'
+    | '/settings'
+    | '/sign-in'
     | '/customers/$customerId'
     | '/team/permissions'
+    | '/team'
   id:
     | '__root__'
     | '/'
     | '/customers'
     | '/leads'
+    | '/settings'
+    | '/sign-in'
     | '/team'
     | '/customers/$customerId'
     | '/team/permissions'
+    | '/team/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CustomersRoute: typeof CustomersRouteWithChildren
   LeadsRoute: typeof LeadsRoute
+  SettingsRoute: typeof SettingsRoute
+  SignInRoute: typeof SignInRoute
   TeamRoute: typeof TeamRouteWithChildren
 }
 
@@ -129,6 +165,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeadsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/team': {
       id: '/team'
       path: '/team'
@@ -142,6 +192,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/customers/$customerId'
       preLoaderRoute: typeof CustomersCustomerIdRouteImport
       parentRoute: typeof CustomersRoute
+    }
+    '/team/': {
+      id: '/team/'
+      path: '/'
+      fullPath: '/team/'
+      preLoaderRoute: typeof TeamIndexRouteImport
+      parentRoute: typeof TeamRoute
     }
     '/team/permissions': {
       id: '/team/permissions'
@@ -167,10 +224,12 @@ const CustomersRouteWithChildren = CustomersRoute._addFileChildren(
 
 interface TeamRouteChildren {
   TeamPermissionsRoute: typeof TeamPermissionsRoute
+  TeamIndexRoute: typeof TeamIndexRoute
 }
 
 const TeamRouteChildren: TeamRouteChildren = {
   TeamPermissionsRoute: TeamPermissionsRoute,
+  TeamIndexRoute: TeamIndexRoute,
 }
 
 const TeamRouteWithChildren = TeamRoute._addFileChildren(TeamRouteChildren)
@@ -179,6 +238,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CustomersRoute: CustomersRouteWithChildren,
   LeadsRoute: LeadsRoute,
+  SettingsRoute: SettingsRoute,
+  SignInRoute: SignInRoute,
   TeamRoute: TeamRouteWithChildren,
 }
 export const routeTree = rootRouteImport

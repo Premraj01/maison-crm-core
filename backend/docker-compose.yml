@@ -1,51 +1,105 @@
+# Compose project name — namespaces containers, volumes and the network so this
+# stack never collides with the `hrms` stack (or any other project whose compose
+# file also lives in a directory called `backend`).
+name: maison-crm
+
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: maison-postgres
+    container_name: maison-crm-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-maison}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-maison}
       POSTGRES_DB: ${POSTGRES_DB:-maison_crm}
+    # 5432 is taken by the native Homebrew postgres, 5433 by hrms-postgres.
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '${POSTGRES_PORT:-5434}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - maison-crm
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-maison}']
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-maison} -d ${POSTGRES_DB:-maison_crm}']
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   mongo:
     image: mongo:8
-    container_name: maison-mongo
+    container_name: maison-crm-mongo
     restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-maison_crm}
+    # 27017 on this machine belongs to hrms-mongo, so this stack publishes 27018.
     ports:
-      - '${MONGO_PORT:-27017}:27017'
+      - '${MONGO_PORT:-27018}:27017'
     volumes:
       - mongo-data:/data/db
+    networks:
+      - maison-crm
     healthcheck:
-      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   redis:
     image: redis:7-alpine
-    container_name: maison-redis
+    container_name: maison-crm-redis
     restart: unless-stopped
     ports:
       - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis-data:/data
+    networks:
+      - maison-crm
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # ── Optional browsers, started only with `docker compose --profile tools up -d`
+  adminer:
+    image: adminer:5
+    container_name: maison-crm-adminer
+    restart: unless-stopped
+    profiles: ['tools']
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - '${ADMINER_PORT:-8081}:8080'
+    networks:
+      - maison-crm
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  mongo-express:
+    image: mongo-express:1.0.2
+    container_name: maison-crm-mongo-express
+    restart: unless-stopped
+    profiles: ['tools']
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/
+      ME_CONFIG_BASICAUTH: 'false'
+    ports:
+      - '${MONGO_EXPRESS_PORT:-8082}:8081'
+    networks:
+      - maison-crm
+    depends_on:
+      mongo:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   mongo-data:
   redis-data:
+
+networks:
+  maison-crm:
+    name: maison-crm-net

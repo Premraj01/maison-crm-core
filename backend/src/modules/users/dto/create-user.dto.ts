@@ -1,8 +1,6 @@
 import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
-import type { UserRole } from '../entities/user.entity';
-
-export const USER_ROLES: UserRole[] = ['owner', 'admin', 'agent', 'viewer'];
+import { USER_ROLES, type UserRole } from '../users.types';
 
 export class CreateUserDto {
   @IsEmail()

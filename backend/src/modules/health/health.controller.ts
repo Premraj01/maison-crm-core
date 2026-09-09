@@ -4,9 +4,10 @@ import {
   HealthCheck,
   HealthCheckService,
   MongooseHealthIndicator,
-  TypeOrmHealthIndicator,
+  PrismaHealthIndicator,
 } from '@nestjs/terminus';
 
+import { PrismaService } from '../../database/prisma/prisma.service';
 import { RealtimeService } from '../../realtime/realtime.service';
 
 @ApiTags('health')
@@ -14,7 +15,8 @@ import { RealtimeService } from '../../realtime/realtime.service';
 export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
-    private readonly postgres: TypeOrmHealthIndicator,
+    private readonly postgres: PrismaHealthIndicator,
+    private readonly prisma: PrismaService,
     private readonly mongo: MongooseHealthIndicator,
     private readonly realtime: RealtimeService,
   ) {}
@@ -23,7 +25,7 @@ export class HealthController {
   @HealthCheck()
   check() {
     return this.health.check([
-      () => this.postgres.pingCheck('postgres', { timeout: 3000 }),
+      () => this.postgres.pingCheck('postgres', this.prisma).withTimeout(3000),
       () => this.mongo.pingCheck('mongo', { timeout: 3000 }),
       async () => ({ realtime: { status: this.realtime.isReady ? 'up' : 'down' } }),
     ]);

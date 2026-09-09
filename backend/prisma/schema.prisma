@@ -1,0 +1,38 @@
+// Prisma is the system of record for structured, relational data
+// (organisations, users, leads, customers, deals, permissions).
+// Mongo — audit logs and notifications — stays on Mongoose.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+  runtime      = "nodejs"
+}
+
+// Prisma 7 keeps connection URLs out of the schema: migrations read the URL
+// from prisma.config.ts, and the client gets it through a driver adapter.
+datasource db {
+  provider = "postgresql"
+}
+
+/// Worked example of the PostgreSQL side — structured, relational records.
+/// Mirror this shape for leads, customers, deals and so on.
+model User {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  /// Soft delete — set instead of removing the row, so the audit trail keeps
+  /// its subject. Every read must filter on `deletedAt: null`.
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  email    String  @unique @db.VarChar(255)
+  fullName String  @db.VarChar(200)
+  orgId    String? @db.Uuid
+  /// Kept as varchar rather than a Postgres enum so roles can be added without
+  /// a type migration. The allowed values live in `UserRole` (users.types.ts).
+  role     String  @default("agent") @db.VarChar(32)
+  isActive Boolean @default(true)
+
+  @@index([orgId])
+  @@map("users")
+}

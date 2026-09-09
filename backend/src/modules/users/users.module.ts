@@ -1,13 +1,11 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { User } from './entities/user.entity';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
 @Module({
-  // forFeature registers the entity with the Postgres connection (autoLoadEntities).
-  imports: [TypeOrmModule.forFeature([User])],
+  // No entity registration: PrismaModule is global, so PrismaService injects
+  // straight into the service.
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],

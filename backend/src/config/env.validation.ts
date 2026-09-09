@@ -2,14 +2,7 @@ import { Logger } from '@nestjs/common';
 
 const logger = new Logger('EnvValidation');
 
-const REQUIRED_IN_PRODUCTION = [
-  'POSTGRES_HOST',
-  'POSTGRES_USER',
-  'POSTGRES_PASSWORD',
-  'POSTGRES_DB',
-  'MONGO_URI',
-  'JWT_SECRET',
-];
+const REQUIRED_IN_PRODUCTION = ['DATABASE_URL', 'MONGO_URI', 'JWT_SECRET'];
 
 /**
  * Fails fast on a misconfigured production boot, and stays quiet-but-loud in
@@ -27,10 +20,6 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
 
   if (isProduction && config.JWT_SECRET === 'change-me-in-production') {
     throw new Error('JWT_SECRET must be changed before running in production.');
-  }
-
-  if (isProduction && ['1', 'true', 'yes'].includes(String(config.POSTGRES_SYNCHRONIZE))) {
-    throw new Error('POSTGRES_SYNCHRONIZE must be false in production — use migrations.');
   }
 
   return config;

@@ -5,7 +5,7 @@ Monorepo with a single git repository at the root.
 ```
 maison-crm-core/
 ├── frontend/    TanStack Start + React 19 + Tailwind (the existing CRM UI)
-├── backend/     NestJS + PostgreSQL + MongoDB + Socket.IO
+├── backend/     NestJS + PostgreSQL (Prisma) + MongoDB (Mongoose) + Socket.IO
 └── .lovable/    Lovable project config
 ```
 
@@ -23,7 +23,7 @@ cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 
 npm run db:up                              # postgres + mongo + redis
-npm run migration:run --prefix backend     # create the schema
+npm run migration:run --prefix backend     # apply Prisma migrations
 
 npm run dev:backend    # http://localhost:3000/api
 npm run dev:frontend   # http://localhost:8080
@@ -70,8 +70,10 @@ npm install --no-save --prefix frontend \
 This project's tracked lockfile is `bun.lock`; installing with `bun` avoids the
 bug entirely.
 
-**Default DB ports may be occupied.** See the port-override note in
-[backend/README.md](backend/README.md).
+**DB ports are shifted off the defaults.** This machine already runs a native
+Homebrew postgres on 5432 and the `hrms` stack on 5433/27017, so the compose
+project `maison-crm` publishes postgres on **5434** and mongo on **27018**. The
+container/port table is in [backend/README.md](backend/README.md).
 
 ## Lovable
 

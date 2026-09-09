@@ -2,7 +2,7 @@
 
 NestJS + TypeScript API for the Maison CRM.
 
-- **PostgreSQL (TypeORM)** — structured, relational records: users, leads, customers, deals.
+- **PostgreSQL (Prisma)** — structured, relational records: users, leads, customers, deals.
 - **MongoDB (Mongoose)** — schema-flexible data: audit logs, notifications, activity feeds.
 - **Socket.IO** — realtime push, wired as a drop-in module (see [Realtime](#realtime)).
 
@@ -27,14 +27,28 @@ npm run start:dev
 - WebSocket — `ws://localhost:3000/realtime`
 - Health — <http://localhost:3000/api/health> (checks both databases and the gateway)
 
-If ports 5432/27017 are already taken, override the host ports without touching
-the app config:
+### Container names and ports
+
+The stack runs under the compose project **`maison-crm`**, so its containers,
+volumes and network never collide with the `hrms` stack on this machine:
+
+| Service | Container | Host port | Why not the default |
+| --- | --- | --- | --- |
+| Postgres | `maison-crm-postgres` | **5434** | 5432 is the native Homebrew postgres, 5433 is `hrms-postgres` |
+| Mongo | `maison-crm-mongo` | **27018** | 27017 is `hrms-mongo` |
+| Redis | `maison-crm-redis` | 6379 | free |
+
+`docker compose` reads the same `.env` the app does, so `POSTGRES_PORT` /
+`MONGO_PORT` / `REDIS_PORT` set both the published port and the port the app
+dials. Change a port there and both sides stay in sync — except `MONGO_URI`,
+which repeats the port and must be edited alongside `MONGO_PORT`.
+
+Optional database browsers are behind a compose profile, so they stay off unless
+asked for:
 
 ```bash
-POSTGRES_PORT=5434 MONGO_PORT=27018 npm run db:up
+docker compose --profile tools up -d   # Adminer :8081, mongo-express :8082
 ```
-
-…then point `POSTGRES_PORT` / `MONGO_URI` in `.env` at the same values.
 
 ## Layout
 
@@ -42,9 +56,10 @@ POSTGRES_PORT=5434 MONGO_PORT=27018 npm run db:up
 src/
 ├── config/              env loading + fail-fast production validation
 ├── database/
-│   ├── postgres/        TypeORM connection, CLI data-source, migrations
+│   ├── prisma/          PrismaClient as an injectable Nest provider
 │   └── mongo/           Mongoose connection
-├── common/              base entity, pagination, exception filter, interceptor
+├── generated/prisma/    Prisma Client — generated, git-ignored
+├── common/              pagination, exception filter, interceptor
 ├── realtime/            the plug-and-play WebSocket module
 └── modules/
     ├── users/           worked example: Postgres + audit trail + realtime
@@ -130,21 +145,34 @@ instance. No application code changes either way.
 
 ## Database notes
 
-**Postgres** is migration-driven. `POSTGRES_SYNCHRONIZE` exists for early local
-work and is rejected outright in production.
+**Postgres** is migration-driven through Prisma. The schema lives in
+`prisma/schema.prisma`; edit it, then:
 
 ```bash
-npm run migration:generate -- src/database/postgres/migrations/AddLeads
-npm run migration:run
-npm run migration:revert
+npm run migration:create -- add_leads   # dev: writes + applies a migration
+npm run migration:run                   # prod/CI: applies committed migrations
+npm run migration:status
+npm run db:studio                       # browse the data
 ```
 
-New entities need no wiring in `PostgresModule` — `autoLoadEntities` picks up
-whatever a module registers via `TypeOrmModule.forFeature([...])`.
+`prisma generate` rebuilds the typed client into `src/generated/prisma`. It runs
+on `postinstall`, so a fresh clone is ready after `npm install` — but rerun
+`npm run prisma:generate` after editing the schema.
 
-UUID primary keys use `gen_random_uuid()` (built into Postgres 13+) via
-`uuidExtension: 'pgcrypto'`, so migrations run on a fresh database without a
-superuser installing `uuid-ossp` first.
+New models need no module wiring: `PrismaModule` is `@Global()`, so a service
+just injects `PrismaService`.
+
+Two things Prisma does not do for you:
+
+- **Soft deletes are manual.** TypeORM hid `deletedAt` rows automatically;
+  Prisma does not. Every read must pass `deletedAt: null` — see `UsersService`.
+- **Connection URLs live outside the schema.** Prisma 7 removed `url` from
+  `datasource`, so migrations read `DATABASE_URL` via `prisma.config.ts` and the
+  app connects through the `@prisma/adapter-pg` driver adapter in
+  `PrismaService`.
+
+UUID primary keys use `gen_random_uuid()`, built into Postgres 13+, so a fresh
+database needs no superuser-installed extension.
 
 **Mongo** collections are defined by `@Schema()` classes under each module's
 `schemas/` folder.
@@ -152,5 +180,9 @@ superuser installing `uuid-ossp` first.
 ## Environment
 
 See `.env.example` for the full list. `validateEnv` fails the boot in production
-when a required variable is missing, when `JWT_SECRET` is still the default, or
-when `POSTGRES_SYNCHRONIZE` is on.
+when a required variable is missing or when `JWT_SECRET` is still the default.
+
+`DATABASE_URL` is what Prisma actually connects with. The discrete `POSTGRES_*`
+variables remain because docker-compose uses them to initialise the server, and
+the app falls back to composing a URL from them if `DATABASE_URL` is unset —
+but the Prisma CLI always needs `DATABASE_URL`, so keep the two in step.

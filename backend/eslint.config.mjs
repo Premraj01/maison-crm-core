@@ -3,7 +3,8 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'eslint.config.mjs'] },
+  // src/generated holds the Prisma Client — generated code, not ours to lint.
+  { ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'src/generated/**', 'eslint.config.mjs'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

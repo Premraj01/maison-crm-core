@@ -10,9 +10,15 @@ export const Route = createFileRoute("/register")({
   head: () => ({
     meta: [
       { title: "Create account — Maison CRM" },
-      { name: "description", content: "Create a Maison account and start managing clients, leads and deals." },
+      {
+        name: "description",
+        content: "Create a Maison account and start managing clients, leads and deals.",
+      },
       { property: "og:title", content: "Create account — Maison CRM" },
-      { property: "og:description", content: "Create a Maison account and start managing clients, leads and deals." },
+      {
+        property: "og:description",
+        content: "Create a Maison account and start managing clients, leads and deals.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -26,12 +32,18 @@ function Register() {
       <section className="flex items-center justify-center p-6">
         <div className="page-enter w-full max-w-sm">
           <div className="mb-10 flex items-center gap-3 lg:hidden">
-            <span className="grid size-10 place-items-center rounded-full bg-foreground font-display text-background">M</span>
+            <span className="grid size-10 place-items-center rounded-full bg-foreground font-display text-background">
+              M
+            </span>
             <span className="font-display text-xl">Maison</span>
           </div>
-          <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-primary">Get started</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-primary">
+            Get started
+          </p>
           <h1 className="mt-3 font-display text-4xl">Create your account</h1>
-          <p className="mt-2 text-sm text-muted-foreground">A few details and your workspace is ready.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            A few details and your workspace is ready.
+          </p>
           <form className="mt-8 space-y-5" onSubmit={(e) => e.preventDefault()}>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -63,17 +75,24 @@ function Register() {
               <span>I agree to the terms of service and privacy policy.</span>
             </label>
             <Button asChild size="lg" className="w-full">
-              <Link to="/">Create account <ArrowRight /></Link>
+              <Link to="/">
+                Create account <ArrowRight />
+              </Link>
             </Button>
           </form>
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            Already have an account? <Link to="/sign-in" className="font-semibold text-primary">Sign in</Link>
+            Already have an account?{" "}
+            <Link to="/sign-in" className="font-semibold text-primary">
+              Sign in
+            </Link>
           </p>
         </div>
       </section>
       <section className="relative hidden overflow-hidden border-l border-border bg-secondary lg:block">
         <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-3 p-10">
-          <span className="grid size-11 place-items-center rounded-full bg-foreground font-display text-lg text-background">M</span>
+          <span className="grid size-11 place-items-center rounded-full bg-foreground font-display text-lg text-background">
+            M
+          </span>
           <span className="font-display text-xl">Maison</span>
         </div>
         <img

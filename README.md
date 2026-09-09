@@ -1,66 +1,80 @@
-# Maison CRM Core
+# Maison CRM
 
-Build a CRM boilerplate UI reusing the Maison design language.
+Monorepo with a single git repository at the root.
 
-I already have a website built in a separate Lovable project called Maison — a warm editorial real estate site. This is a brand-new project. Do NOT touch that site. Build the CRM here from scratch, but reuse its exact look and feel.
-
-Design tokens (match these exactly)
-
-Colors: paper #F3ECE1, cream #FBF7F0, ink #221E19, ink-soft #6A6155, line #E2D8C8, terracotta #C15B33, terracotta-soft #E8B79E. Include a full dark variant and a theme toggle that remembers the choice.
-
-Fonts: Fraunces for headings/display, Manrope for body and UI, with tabular numbers for metrics. Load via Google Fonts <link> in the root route head.
-
-Icons: lucide. Charts: Recharts. Toasts/snackbars: sonner. Primitives: shadcn/ui restyled to the Maison theme.
-
-Motion: restrained and consistent — page fade/rise on entry, staggered card reveals, smooth drawer/modal transitions, animated counters, shimmer skeletons, hover lifts. All respect prefers-reduced-motion.
-
-Foundation
-
-React 19 + TypeScript on the current Lovable stack (TanStack Start, Vite), Tailwind v4 tokens in src/styles.css.
-
-App shell: fixed left navigation rail (Dashboard, Leads, Customers, Team, Settings) with collapse, top bar with search, notifications, theme toggle, and a role switcher for previewing permissions.
-
-Reusable component kit (build these once, global) Buttons (primary/secondary/ghost/danger, sizes, loading), cards & stat cards, modal/dialog, drawer, snackbar/toasts, banners (info/success/warning/error), tables with sorting, pagination and empty states, form inputs (text, select, date, textarea, search), badges & status pills, tabs, dropdown menus, avatars, tooltips, full-page app loader, skeleton loaders (card, table row, list, chart), empty and error states. A "Components" page shows every element in one place.
-
-Screens (sample data only — no logins or saved records yet)
-
-Dashboard — KPI stat cards (leads, conversions, pipeline value, revenue), pipeline chart, lead-source breakdown, recent activity feed, tasks list.
-
-Leads — table + kanban pipeline (New, Contacted, Qualified, Proposal, Won/Lost) with drag between stages, filters, search, lead detail drawer with timeline and notes, add/edit lead modal.
-
-Customers — customer list with segments and health status, customer detail page (profile, contacts, deals, activity, files tab).
-
-Team & permissions — user list with roles (Admin, Manager, Sales rep, Viewer), invite-user modal, permission matrix screen; the role switcher visibly changes what is available.
-
-Settings — profile, appearance (theme), notifications, pipeline stage configuration.
-
-Sign-in screen — visual only for now, matching the theme.
-
-Notes
-
-Sample data in typed local modules (src/data/*.ts) with a mock can(role, action) permission helper, so swapping in a real backend later touches only the data layer.
-
-Modern fonts and UI, consistent spacing/typography across every screen.
-
-Keep it a separate project from the website.
-
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/c9673dcd-3d10-4262-a0da-941fffe75524).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
 ```
+maison-crm-core/
+├── frontend/    TanStack Start + React 19 + Tailwind (the existing CRM UI)
+├── backend/     NestJS + PostgreSQL + MongoDB + Socket.IO
+└── .lovable/    Lovable project config
+```
+
+## Requirements
+
+Node **>= 20.19** — the backend toolchain needs it. `.nvmrc` pins 22.21.1.
+
+## Quick start
+
+```bash
+nvm use
+npm run install:all
+
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+
+npm run db:up                              # postgres + mongo + redis
+npm run migration:run --prefix backend     # create the schema
+
+npm run dev:backend    # http://localhost:3000/api
+npm run dev:frontend   # http://localhost:8080
+```
+
+`npm run dev` starts both at once. Backend details — architecture, realtime
+protocol, migrations — are in [backend/README.md](backend/README.md).
+
+## Realtime, end to end
+
+The backend pushes; the frontend subscribes. Server side, inject one service:
+
+```ts
+this.realtime.emitToUser(userId, 'notification.created', notification);
+```
+
+Client side, one hook:
+
+```tsx
+import { useRealtimeEvent, useRealtimeRoom, Rooms } from "@/lib/realtime";
+
+useRealtimeEvent<Notification>("notification.created", (n) => toast(n.title));
+
+// Only entity/topic rooms need joining — user and org rooms are automatic.
+useRealtimeRoom(Rooms.entity("lead", leadId));
+useRealtimeEvent<Lead>("lead.updated", setLead);
+```
+
+## Known issues on this machine
+
+**Frontend build needs a native binding that npm skips.** `package.json` pins
+`overrides.rolldown` to `1.2.1`, and npm's optional-dependency bug
+([npm/cli#4828](https://github.com/npm/cli/issues/4828)) leaves
+two native bindings uninstalled, so `npm run build` fails with "Cannot find
+native binding" and `npm run dev` fails on `oxc-parser`. Both packages exist —
+npm just does not fetch them under an override. Workaround:
+
+```bash
+npm install --no-save --prefix frontend \
+  @rolldown/binding-darwin-arm64@1.2.1 \
+  @oxc-parser/binding-darwin-arm64@0.120.0
+```
+
+This project's tracked lockfile is `bun.lock`; installing with `bun` avoids the
+bug entirely.
+
+**Default DB ports may be occupied.** See the port-override note in
+[backend/README.md](backend/README.md).
+
+## Lovable
+
+This repo is connected to Lovable, whose editor expects the TanStack app at the
+repository root. Moving it into `frontend/` will likely break that sync — the
+move is plain `git mv`, so it is reversible if you need the integration back.

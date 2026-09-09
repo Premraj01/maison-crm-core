@@ -15,7 +15,7 @@ const nav = [
 ] as const;
 export function AppShell({children}:{children:ReactNode}){
   const {theme,setTheme,role,setRole,railCollapsed,setRailCollapsed}=useCrm(); const [mobile,setMobile]=useState(false);
-  const path=useRouterState({select:s=>s.location.pathname}); if(path==="/sign-in") return <>{children}</>;
+  const path=useRouterState({select:s=>s.location.pathname}); if(path==="/sign-in"||path==="/register") return <>{children}</>;
   return <div className="min-h-screen bg-background text-foreground">
     {mobile&&<button aria-label="Close navigation" className="fixed inset-0 z-40 bg-overlay md:hidden" onClick={()=>setMobile(false)}/>} 
     <aside className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-sidebar-border bg-sidebar transition-[width,transform] duration-300 ${railCollapsed?"w-[76px]":"w-[232px]"} ${mobile?"translate-x-0":"-translate-x-full md:translate-x-0"}`}>

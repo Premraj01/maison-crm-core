@@ -28,6 +28,13 @@ model User {
   email    String  @unique @db.VarChar(255)
   fullName String  @db.VarChar(200)
   orgId    String? @db.Uuid
+
+  /// scrypt digest, never the plaintext. Format and verification live in
+  /// `src/common/crypto/password.ts`. Excluded from every API response by the
+  /// `publicUserSelect` projection in `users.types.ts`.
+  passwordHash String    @db.VarChar(255)
+  lastLoginAt  DateTime? @db.Timestamptz(6)
+
   /// Kept as varchar rather than a Postgres enum so roles can be added without
   /// a type migration. The allowed values live in `UserRole` (users.types.ts).
   role     String  @default("agent") @db.VarChar(32)

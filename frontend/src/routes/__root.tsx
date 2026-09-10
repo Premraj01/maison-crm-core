@@ -11,6 +11,8 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { AuthProvider } from "../lib/auth/auth-context";
+import { AuthGate } from "../lib/auth/auth-gate";
 import { CrmProvider } from "../lib/crm-context";
 import { AppShell } from "../components/crm/AppShell";
 import { Toaster } from "../components/ui/sonner";
@@ -127,12 +129,18 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <CrmProvider>
-        <AppShell>
-          <Outlet />
-        </AppShell>
-        <Toaster position="bottom-right" />
-      </CrmProvider>
+      {/* AuthProvider sits outside CrmProvider: the signed-in user's role is
+          what CrmProvider hands to the permission checks. */}
+      <AuthProvider>
+        <CrmProvider>
+          <AuthGate>
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          </AuthGate>
+          <Toaster position="bottom-right" />
+        </CrmProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

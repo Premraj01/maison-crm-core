@@ -16,7 +16,12 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // `ignoreRestSiblings` lets `const { passwordHash: _hash, ...rest } = user`
+      // strip a field without the discard tripping the rule.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
+      ],
       // Nest relies on decorator metadata and non-null assertions for injected props.
       '@typescript-eslint/no-non-null-assertion': 'off',
     },

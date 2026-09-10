@@ -8,9 +8,11 @@ import {
 } from '@nestjs/terminus';
 
 import { PrismaService } from '../../database/prisma/prisma.service';
+import { Public } from '../auth/decorators/public.decorator';
 import { RealtimeService } from '../../realtime/realtime.service';
 
 @ApiTags('health')
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(

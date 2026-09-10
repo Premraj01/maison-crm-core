@@ -74,8 +74,10 @@ function Register() {
               <Checkbox className="mt-0.5" />
               <span>I agree to the terms of service and privacy policy.</span>
             </label>
+            {/* Registration is not wired to the backend yet — accounts are created
+                by an admin (POST /api/users) or by the seed script. */}
             <Button asChild size="lg" className="w-full">
-              <Link to="/">
+              <Link to="/sign-in">
                 Create account <ArrowRight />
               </Link>
             </Button>

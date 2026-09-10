@@ -1,4 +1,9 @@
-export type Role = "admin" | "manager" | "sales" | "viewer";
+/**
+ * Mirrors `USER_ROLES` in `backend/src/modules/users/users.types.ts`, most to
+ * least privileged. Roles come from the signed-in user, so the two lists have
+ * to agree — a role the backend issues that is missing here has no permissions.
+ */
+export type Role = "owner" | "admin" | "agent" | "viewer";
 export type LeadStage = "New" | "Contacted" | "Qualified" | "Proposal" | "Won" | "Lost";
 export type Health = "Strong" | "Watch" | "At risk";
 export type PermissionAction = "lead:create" | "lead:edit" | "lead:move" | "team:invite" | "team:manage" | "settings:edit" | "customer:edit";
@@ -11,8 +16,8 @@ export interface Task { id: string; title: string; due: string; done: boolean; p
 
 export const stages: LeadStage[] = ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"];
 export const roles: { value: Role; label: string }[] = [
-  { value: "admin", label: "Admin" }, { value: "manager", label: "Manager" },
-  { value: "sales", label: "Sales rep" }, { value: "viewer", label: "Viewer" },
+  { value: "owner", label: "Owner" }, { value: "admin", label: "Admin" },
+  { value: "agent", label: "Agent" }, { value: "viewer", label: "Viewer" },
 ];
 
 export const leads: Lead[] = [
@@ -35,11 +40,13 @@ export const customers: Customer[] = [
   { id:"C-206", name:"Hugo Bernard", company:"Kindred Hotels", segment:"Enterprise", health:"Strong", value:405000, contact:"Hugo Bernard", email:"hugo@kindredhotels.com", since:"May 2023" },
 ];
 
+// Names and roles match the accounts created by `backend/prisma/seed.ts`, so a
+// seeded sign-in lands on a team list that already contains the signed-in user.
 export const team: TeamMember[] = [
-  { id:"U-1", name:"Maya Chen", email:"maya@maison.co", role:"admin", initials:"MC", active:true },
-  { id:"U-2", name:"Jon Bell", email:"jon@maison.co", role:"manager", initials:"JB", active:true },
-  { id:"U-3", name:"Sam Rivera", email:"sam@maison.co", role:"sales", initials:"SR", active:true },
-  { id:"U-4", name:"Ana Moreau", email:"ana@maison.co", role:"viewer", initials:"AM", active:false },
+  { id:"U-1", name:"Maya Chen", email:"owner@maison.co", role:"owner", initials:"MC", active:true },
+  { id:"U-2", name:"Jon Bell", email:"admin@maison.co", role:"admin", initials:"JB", active:true },
+  { id:"U-3", name:"Sam Rivera", email:"agent@maison.co", role:"agent", initials:"SR", active:true },
+  { id:"U-4", name:"Ana Moreau", email:"viewer@maison.co", role:"viewer", initials:"AM", active:true },
 ];
 export const activities: Activity[] = [
   { id:"A1", text:"Proposal moved to final review", person:"Elena Rossi", time:"18 min ago", kind:"deal" },
@@ -62,9 +69,9 @@ export const sourceData = [
   { name:"Referral", value:38 }, { name:"Website", value:27 }, { name:"Events", value:19 }, { name:"Outbound", value:16 },
 ];
 const permissions: Record<Role, PermissionAction[]> = {
+  owner:["lead:create","lead:edit","lead:move","team:invite","team:manage","settings:edit","customer:edit"],
   admin:["lead:create","lead:edit","lead:move","team:invite","team:manage","settings:edit","customer:edit"],
-  manager:["lead:create","lead:edit","lead:move","team:invite","customer:edit"],
-  sales:["lead:create","lead:edit","lead:move","customer:edit"],
+  agent:["lead:create","lead:edit","lead:move","customer:edit"],
   viewer:[],
 };
 export function can(role: Role, action: PermissionAction) { return permissions[role].includes(action); }

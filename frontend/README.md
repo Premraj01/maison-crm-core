@@ -64,3 +64,22 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Property listings
+
+The Properties page reads and writes `/api/properties` on the backend, and the
+public **beacon-estates** website reads the same rows. Postgres is the single
+source of truth: publishing or editing a listing in the CRM changes the website
+on its next request, with no rebuild and no sync step.
+
+Reads are public on the API — the website is an anonymous visitor. Writes need
+a signed-in agent or above; only an admin can take a listing down, and removal
+is a soft delete, so the row survives for the audit trail while dropping off
+both apps.
+
+Photographs are served from each app's own `public/listings/` folder, and the
+database stores the site-relative path (`/listings/<slug>.jpg`). Images added
+through the CRM's upload field are stored as data URLs on the row.
+
+Set `VITE_SITE_URL` so each card's "View on site" link resolves; see
+`.env.example`.

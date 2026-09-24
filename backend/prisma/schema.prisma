@@ -40,6 +40,117 @@ model User {
   role     String  @default("agent") @db.VarChar(32)
   isActive Boolean @default(true)
 
+  /// Leads assigned to this agent to show and follow up.
+  assignedLeads Lead[] @relation("LeadOwner")
+
   @@index([orgId])
   @@map("users")
+}
+
+/// A listing in the portfolio. Read publicly by the beacon-estates website and
+/// written by the CRM, so this table is the single source of truth for both.
+model Property {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  /// Soft delete, as on `User` — every read must filter on `deletedAt: null`.
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  /// URL slug the public site addresses a listing by (/properties/<slug>).
+  /// Unique so the website can look one up without knowing its UUID.
+  slug    String @unique @db.VarChar(200)
+  name    String @db.VarChar(200)
+  address String @db.VarChar(400)
+
+  /// Kept as varchar rather than Postgres enums, matching `User.role`: the
+  /// allowed values live in `properties.types.ts` and need no type migration.
+  kind    String @db.VarChar(32)
+  listing String @db.VarChar(16)
+
+  /// Where the listing stands. "Sold" and "Rented" are the archived states:
+  /// the listing stays visible on both the CRM and the public site, shown
+  /// blurred, rather than disappearing — a withdrawn listing is a soft delete
+  /// instead. See `isArchived` in `properties.types.ts`.
+  status String @default("Available") @db.VarChar(16)
+
+  /// All optional — a listing often goes up before these are settled.
+  /// `price` is a whole currency unit, so the int ceiling is ~2.1 billion.
+  price     Int?
+  bedrooms  Int?
+  bathrooms Int?
+  area      Int?
+
+  /// Presentation fields the public website renders. They live here so the
+  /// database drives the site completely — a badge or the homepage trio is
+  /// changed in the CRM, not in the website's source.
+  tag      String? @db.VarChar(32)
+  portrait Boolean @default(false)
+  featured Boolean @default(false)
+
+  details  String   @default("")
+  /// Authored prose lists; Postgres text[] rather than a join table, because
+  /// nothing queries an individual feature or image.
+  features String[] @default([])
+  images   String[] @default([])
+
+  orgId String? @db.Uuid
+
+  /// Enquiries raised against this listing — chiefly "Book a viewing" on the
+  /// public website, which is what makes a lead property-specific.
+  leads Lead[]
+
+  @@index([orgId])
+  @@index([listing])
+  @@index([kind])
+  @@index([status])
+  @@map("properties")
+}
+
+/// A person who enquired. Created either by an agent in the CRM or, far more
+/// often, by the public website's viewing form — in which case `propertyId`
+/// records which listing they were looking at when they asked.
+model Lead {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  /// Soft delete, as everywhere else — reads filter on `deletedAt: null`.
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  name    String  @db.VarChar(200)
+  email   String  @db.VarChar(255)
+  phone   String? @db.VarChar(40)
+  /// What the enquirer wrote. Public input, so it is length-capped in the DTO
+  /// and only ever rendered as text.
+  message String  @default("")
+
+  /// Varchars rather than Postgres enums, as with `User.role`; the allowed
+  /// values live in `leads.types.ts`.
+  stage    String  @default("New") @db.VarChar(32)
+  source   String  @default("Website") @db.VarChar(32)
+  /// Which option the website form was on ("Booking a viewing", and so on).
+  interest String? @db.VarChar(64)
+
+  /// Set by an agent once the enquiry is qualified; unknown at capture.
+  value Int?
+
+  /// Null for a general enquiry that named no listing. `SetNull` rather than
+  /// `Cascade`: removing a listing must not erase the people who asked about
+  /// it, only the link.
+  propertyId String?   @db.Uuid
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  /// The agent who will show the property. Unassigned until someone picks it
+  /// up. `SetNull` rather than `Cascade`: deactivating an agent must release
+  /// their leads, never delete them.
+  ownerId String? @db.Uuid
+  owner   User?   @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  orgId String? @db.Uuid
+
+  lastContactAt DateTime? @db.Timestamptz(6)
+
+  @@index([propertyId])
+  @@index([orgId])
+  @@index([stage])
+  @@map("leads")
 }

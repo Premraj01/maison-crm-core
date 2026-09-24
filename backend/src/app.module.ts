@@ -7,7 +7,9 @@ import { DatabaseModule } from './database/database.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
+import { LeadsModule } from './modules/leads/leads.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { PropertiesModule } from './modules/properties/properties.module';
 import { UsersModule } from './modules/users/users.module';
 import { RealtimeModule } from './realtime/realtime.module';
 
@@ -28,6 +30,8 @@ import { RealtimeModule } from './realtime/realtime.module';
     // authenticated unless it opts out with @Public().
     AuthModule,
     NotificationsModule,
+    LeadsModule,
+    PropertiesModule,
     UsersModule,
     HealthModule,
   ],

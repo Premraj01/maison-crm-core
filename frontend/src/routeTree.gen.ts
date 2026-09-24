@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as LeadsRouteImport } from './routes/leads'
+import { Route as PropertiesRouteImport } from './routes/properties'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SignInRouteImport } from './routes/sign-in'
@@ -39,6 +40,11 @@ const CustomersRoute = CustomersRouteImport.update({
 const LeadsRoute = LeadsRouteImport.update({
   id: '/leads',
   path: '/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PropertiesRoute = PropertiesRouteImport.update({
+  id: '/properties',
+  path: '/properties',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RegisterRoute = RegisterRouteImport.update({
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/components': typeof ComponentsRoute
   '/customers': typeof CustomersRouteWithChildren
   '/leads': typeof LeadsRoute
+  '/properties': typeof PropertiesRoute
   '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/components': typeof ComponentsRoute
   '/customers': typeof CustomersRouteWithChildren
   '/leads': typeof LeadsRoute
+  '/properties': typeof PropertiesRoute
   '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/components': typeof ComponentsRoute
   '/customers': typeof CustomersRouteWithChildren
   '/leads': typeof LeadsRoute
+  '/properties': typeof PropertiesRoute
   '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/components'
     | '/customers'
     | '/leads'
+    | '/properties'
     | '/register'
     | '/settings'
     | '/sign-in'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/components'
     | '/customers'
     | '/leads'
+    | '/properties'
     | '/register'
     | '/settings'
     | '/sign-in'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '/components'
     | '/customers'
     | '/leads'
+    | '/properties'
     | '/register'
     | '/settings'
     | '/sign-in'
@@ -162,6 +174,7 @@ export interface RootRouteChildren {
   ComponentsRoute: typeof ComponentsRoute
   CustomersRoute: typeof CustomersRouteWithChildren
   LeadsRoute: typeof LeadsRoute
+  PropertiesRoute: typeof PropertiesRoute
   RegisterRoute: typeof RegisterRoute
   SettingsRoute: typeof SettingsRoute
   SignInRoute: typeof SignInRoute
@@ -196,6 +209,13 @@ declare module '@tanstack/react-router' {
       path: '/leads'
       fullPath: '/leads'
       preLoaderRoute: typeof LeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/properties': {
+      id: '/properties'
+      path: '/properties'
+      fullPath: '/properties'
+      preLoaderRoute: typeof PropertiesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register': {
@@ -279,6 +299,7 @@ const rootRouteChildren: RootRouteChildren = {
   ComponentsRoute: ComponentsRoute,
   CustomersRoute: CustomersRouteWithChildren,
   LeadsRoute: LeadsRoute,
+  PropertiesRoute: PropertiesRoute,
   RegisterRoute: RegisterRoute,
   SettingsRoute: SettingsRoute,
   SignInRoute: SignInRoute,

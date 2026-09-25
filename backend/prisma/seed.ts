@@ -31,19 +31,66 @@ const SEED_PASSWORD = process.env.SEED_PASSWORD ?? 'Maison!2026';
 /** A single fixed org, so the seeded users share realtime rooms and org-scoped queries. */
 const SEED_ORG_ID = process.env.SEED_ORG_ID ?? '00000000-0000-4000-8000-000000000001';
 
+/**
+ * Two regions, each with a full team, so region isolation can be checked by
+ * signing in: a West Coast account must never see an East Coast listing, lead
+ * or person. Fixed ids because `regions` has no other unique column to upsert on.
+ */
+const SEED_REGIONS = [
+  {
+    id: '00000000-0000-4000-8000-0000000000a1',
+    name: 'West Coast',
+    code: 'WC',
+    description: 'California — Malibu to Napa.',
+  },
+  {
+    id: '00000000-0000-4000-8000-0000000000a2',
+    name: 'East Coast',
+    code: 'EC',
+    description: 'New York City, the Hudson Valley and Long Island.',
+  },
+] as const;
+
+type SeedRegionCode = (typeof SEED_REGIONS)[number]['code'];
+
 interface SeedUser {
   email: string;
   fullName: string;
   role: UserRole;
+  /** Omitted for the global roles, which belong to no region. */
+  region?: SeedRegionCode;
   isActive?: boolean;
 }
 
 const SEED_USERS: SeedUser[] = [
+  { email: 'sysadmin@maison.co', fullName: 'Rhea Kapoor', role: 'system_admin' },
   { email: 'owner@maison.co', fullName: 'Maya Chen', role: 'owner' },
-  { email: 'admin@maison.co', fullName: 'Jon Bell', role: 'admin' },
-  { email: 'agent@maison.co', fullName: 'Sam Rivera', role: 'agent' },
-  { email: 'viewer@maison.co', fullName: 'Ana Moreau', role: 'viewer' },
+  { email: 'region@maison.co', fullName: 'Jon Bell', role: 'region_head', region: 'WC' },
+  { email: 'sdr@maison.co', fullName: 'Ana Moreau', role: 'sales_development_rep', region: 'WC' },
+  { email: 'advisor@maison.co', fullName: 'Sam Rivera', role: 'property_advisor', region: 'WC' },
+  { email: 'coordinator@maison.co', fullName: 'Tobias Reyes', role: 'transaction_coordinator', region: 'WC' },
+  { email: 'east.region@maison.co', fullName: 'Nadia Okafor', role: 'region_head', region: 'EC' },
+  { email: 'east.sdr@maison.co', fullName: 'Leo Hart', role: 'sales_development_rep', region: 'EC' },
+  { email: 'east.advisor@maison.co', fullName: 'Iris Novak', role: 'property_advisor', region: 'EC' },
+  { email: 'east.coordinator@maison.co', fullName: 'Owen Price', role: 'transaction_coordinator', region: 'EC' },
 ];
+
+/** Which region sells each seeded listing, by slug. */
+const PROPERTY_REGIONS: Record<string, SeedRegionCode> = {
+  'casa-solana': 'WC',
+  'villa-aster': 'WC',
+  'hilltop-farmhouse': 'WC',
+  'palm-court-residence': 'WC',
+  'the-foundry-loft': 'WC',
+  'cypress-court-villa': 'WC',
+  'the-meridian-loft': 'EC',
+  'the-larch-house': 'EC',
+  'the-dune-house': 'EC',
+};
+
+function regionIdFor(code: SeedRegionCode | undefined): string | null {
+  return code ? (SEED_REGIONS.find((region) => region.code === code)?.id ?? null) : null;
+}
 
 
 interface SeedProperty {
@@ -299,6 +346,13 @@ async function main(): Promise<void> {
   try {
     assertEveryRoleCovered();
 
+    for (const region of SEED_REGIONS) {
+      const fields = { ...region, orgId: SEED_ORG_ID, deletedAt: null };
+      await prisma.region.upsert({ where: { id: region.id }, create: fields, update: fields });
+      console.log(`  ${region.code.padEnd(6)}  ${region.name}`);
+    }
+    console.log(`\nSeeded ${SEED_REGIONS.length} regions.\n`);
+
     for (const seed of SEED_USERS) {
       const email = seed.email.toLowerCase();
       const passwordHash = await hashPassword(SEED_PASSWORD);
@@ -306,6 +360,7 @@ async function main(): Promise<void> {
         fullName: seed.fullName,
         role: seed.role,
         orgId: SEED_ORG_ID,
+        regionId: regionIdFor(seed.region),
         isActive: seed.isActive ?? true,
         passwordHash,
         // Undo a soft delete, so a seeded account can always be brought back.
@@ -319,7 +374,7 @@ async function main(): Promise<void> {
         select: { id: true, email: true, role: true },
       });
 
-      console.log(`  ${user.role.padEnd(6)}  ${user.email.padEnd(20)}  ${user.id}`);
+      console.log(`  ${user.role.padEnd(23)}  ${user.email.padEnd(26)}  ${seed.region ?? 'all'}`);
     }
 
     console.log(`\nSeeded ${SEED_USERS.length} users in org ${SEED_ORG_ID}.`);
@@ -329,7 +384,12 @@ async function main(): Promise<void> {
 
     for (const seed of SEED_PROPERTIES) {
       // Undo a soft delete too, so `db:seed` always restores the full portfolio.
-      const fields = { ...seed, orgId: SEED_ORG_ID, deletedAt: null };
+      const fields = {
+        ...seed,
+        orgId: SEED_ORG_ID,
+        regionId: regionIdFor(PROPERTY_REGIONS[seed.slug]),
+        deletedAt: null,
+      };
       const property = await prisma.property.upsert({
         where: { slug: seed.slug },
         create: fields,
@@ -342,6 +402,15 @@ async function main(): Promise<void> {
 
     const trio = SEED_PROPERTIES.filter((seed) => seed.featured).length;
     console.log(`\nSeeded ${SEED_PROPERTIES.length} properties (${trio} featured).`);
+
+    // Leads follow their listing's region. The API keeps that true as listings
+    // move; the upserts above bypass it, so enquiries already captured against
+    // a seeded listing are brought into line here.
+    const moved = await prisma.$executeRaw`
+      UPDATE "leads" AS l SET "regionId" = p."regionId"
+      FROM "properties" AS p
+      WHERE l."propertyId" = p."id" AND l."regionId" IS DISTINCT FROM p."regionId"`;
+    if (moved > 0) console.log(`Placed ${moved} existing lead(s) in their listing's region.`);
   } finally {
     await prisma.$disconnect();
   }
@@ -364,6 +433,11 @@ function assertSeedPropertiesValid(): void {
     }
     if (!(LISTING_TYPES as readonly string[]).includes(seed.listing)) {
       throw new Error(`Property "${seed.slug}" has unknown listing type "${seed.listing}"`);
+    }
+  }
+  for (const slug of Object.keys(PROPERTY_REGIONS)) {
+    if (!SEED_PROPERTIES.some((seed) => seed.slug === slug)) {
+      throw new Error(`PROPERTY_REGIONS names unknown slug "${slug}"`);
     }
   }
   const slugs = new Set(SEED_PROPERTIES.map((seed) => seed.slug));

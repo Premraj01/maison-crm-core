@@ -1,13 +1,16 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 
 import { PaginatedResult, PaginationQueryDto, paginated } from '../../common/dto/pagination.dto';
 import { hashPassword } from '../../common/crypto/password';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { RealtimeService } from '../../realtime/realtime.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import type { AuthenticatedUser } from '../auth/auth.types';
+import { type Viewer, isRegional, regionWhere, writableRegion } from '../regions/region-scope';
+import { RegionsService } from '../regions/regions.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { type PublicUser, publicUserSelect } from './users.types';
+import { type PublicUser, type UserRole, isGlobalRole, publicUserSelect } from './users.types';
 
 /** Postgres error for a unique-constraint violation, surfaced by Prisma. */
 const UNIQUE_VIOLATION = 'P2002';
@@ -21,6 +24,9 @@ const UNIQUE_VIOLATION = 'P2002';
  * read below is scoped with `deletedAt: null`. Every query also passes
  * `publicUserSelect`, which leaves `passwordHash` behind — so no response, audit
  * entry or socket payload can carry the digest.
+ *
+ * Every method also takes the caller, and scopes by region: a region head sees
+ * and manages their own region's people only, and cannot hand out a global role.
  */
 @Injectable()
 export class UsersService {
@@ -28,10 +34,12 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogService,
     private readonly realtime: RealtimeService,
+    private readonly regions: RegionsService,
   ) {}
 
-  async create(dto: CreateUserDto, actorId = 'system'): Promise<PublicUser> {
+  async create(dto: CreateUserDto, actor: AuthenticatedUser): Promise<PublicUser> {
     const { password, ...rest } = dto;
+    const regionId = await this.placement(actor, rest.role, rest.regionId);
 
     let user: PublicUser;
     try {
@@ -40,6 +48,7 @@ export class UsersService {
           ...rest,
           email: rest.email.trim().toLowerCase(),
           orgId: rest.orgId ?? null,
+          regionId,
           passwordHash: await hashPassword(password),
         },
         select: publicUserSelect,
@@ -54,7 +63,7 @@ export class UsersService {
     }
 
     await this.auditLogs.record({
-      actorId,
+      actorId: actor.id,
       orgId: user.orgId ?? undefined,
       action: 'user.created',
       entityType: 'user',
@@ -62,13 +71,13 @@ export class UsersService {
       after: { ...user },
     });
 
-    if (user.orgId) this.realtime.emitToOrg(user.orgId, 'user.created', user);
+    this.realtime.emitToRegionScope('user.created', user);
 
     return user;
   }
 
-  async findAll(query: PaginationQueryDto): Promise<PaginatedResult<PublicUser>> {
-    const where = { deletedAt: null };
+  async findAll(query: PaginationQueryDto, viewer: Viewer): Promise<PaginatedResult<PublicUser>> {
+    const where = { deletedAt: null, ...regionWhere(viewer) };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
         where,
@@ -82,23 +91,38 @@ export class UsersService {
     return paginated(items, total, query);
   }
 
-  async findOne(id: string): Promise<PublicUser> {
+  async findOne(id: string, viewer: Viewer): Promise<PublicUser> {
     const user = await this.prisma.user.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...regionWhere(viewer) },
       select: publicUserSelect,
     });
     if (!user) throw new NotFoundException(`User ${id} not found`);
     return user;
   }
 
-  async update(id: string, dto: UpdateUserDto, actorId = 'system'): Promise<PublicUser> {
-    const before = await this.findOne(id);
+  async update(id: string, dto: UpdateUserDto, actor: AuthenticatedUser): Promise<PublicUser> {
+    const before = await this.findOne(id, actor);
+
+    // Only re-derive the region when something that decides it is changing, so
+    // renaming someone never moves them.
+    const placementChanges = dto.role !== undefined || dto.regionId !== undefined;
+    const regionId = placementChanges
+      ? await this.placement(
+          actor,
+          dto.role ?? (before.role as UserRole),
+          dto.regionId === undefined ? before.regionId : dto.regionId,
+        )
+      : before.regionId;
 
     let after: PublicUser;
     try {
       after = await this.prisma.user.update({
         where: { id },
-        data: dto.email ? { ...dto, email: dto.email.trim().toLowerCase() } : dto,
+        data: {
+          ...dto,
+          ...(dto.email ? { email: dto.email.trim().toLowerCase() } : {}),
+          regionId,
+        },
         select: publicUserSelect,
       });
     } catch (error) {
@@ -109,7 +133,7 @@ export class UsersService {
     }
 
     await this.auditLogs.record({
-      actorId,
+      actorId: actor.id,
       orgId: after.orgId ?? undefined,
       action: 'user.updated',
       entityType: 'user',
@@ -119,14 +143,14 @@ export class UsersService {
     });
 
     this.realtime.emitToEntity('user', id, 'user.updated', after);
-    if (after.orgId) this.realtime.emitToOrg(after.orgId, 'user.updated', after);
+    this.realtime.emitToRegionScope('user.updated', after);
 
     return after;
   }
 
   /** Soft delete — `deletedAt` is set, the row is kept for auditing. */
-  async remove(id: string, actorId = 'system'): Promise<void> {
-    const user = await this.findOne(id);
+  async remove(id: string, actor: AuthenticatedUser): Promise<void> {
+    const user = await this.findOne(id, actor);
     await this.prisma.user.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -134,7 +158,7 @@ export class UsersService {
     });
 
     await this.auditLogs.record({
-      actorId,
+      actorId: actor.id,
       orgId: user.orgId ?? undefined,
       action: 'user.deleted',
       entityType: 'user',
@@ -142,7 +166,33 @@ export class UsersService {
       before: { ...user },
     });
 
-    if (user.orgId) this.realtime.emitToOrg(user.orgId, 'user.deleted', { id });
+    this.realtime.emitToRegionScope('user.deleted', {
+      id,
+      orgId: user.orgId,
+      regionId: user.regionId,
+    });
+  }
+
+  /**
+   * The region an account with `role` should be in. The global roles are in
+   * none. A regional actor may only place people in their own region, and may
+   * not grant a global role — which would lift the person out of every region
+   * boundary, the actor's own included.
+   */
+  private async placement(
+    actor: AuthenticatedUser,
+    role: UserRole | undefined,
+    requested: string | null | undefined,
+  ): Promise<string | null> {
+    if (role && isGlobalRole(role)) {
+      if (isRegional(actor)) {
+        throw new ForbiddenException('Only an owner or system admin can grant that role');
+      }
+      return null;
+    }
+    const regionId = writableRegion(actor, requested);
+    await this.regions.assertAssignable(regionId);
+    return regionId;
   }
 }
 

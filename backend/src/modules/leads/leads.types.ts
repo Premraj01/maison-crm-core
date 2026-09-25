@@ -53,6 +53,7 @@ export const leadSelect = {
   propertyId: true,
   ownerId: true,
   orgId: true,
+  regionId: true,
   lastContactAt: true,
   property: { select: { id: true, slug: true, name: true, address: true } },
   /// The agent who will show the property. Only their name and email — never

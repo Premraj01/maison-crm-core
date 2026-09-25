@@ -12,6 +12,7 @@ import {
 } from '@nestjs/websockets';
 import type { Server } from 'socket.io';
 
+import { isGlobalRole, isUserRole } from '../modules/users/users.types';
 import { SubscribeDto } from './dto/subscribe.dto';
 import { WsExceptionFilter } from './filters/ws-exception.filter';
 import { WsAuthGuard } from './guards/ws-auth.guard';
@@ -71,6 +72,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (!principal.anonymous) {
       await socket.join(Rooms.user(principal.userId));
       if (principal.orgId) await socket.join(Rooms.org(principal.orgId));
+      // Region-sensitive events (leads, people) go to one of these two rather
+      // than the whole org. Taken from the token, so a user moved to another
+      // region hears their new region's events from their next sign-in.
+      if (principal.orgId && principal.roles.some((role) => isUserRole(role) && isGlobalRole(role))) {
+        await socket.join(Rooms.orgAdmins(principal.orgId));
+      } else if (principal.regionId) {
+        await socket.join(Rooms.region(principal.regionId));
+      }
     }
 
     socket.emit(WS_OUTBOUND.CONNECTED, {

@@ -8,6 +8,8 @@ export interface AuthUser {
   fullName: string;
   role: Role;
   orgId: string | null;
+  /** Null for the global roles, and for anyone not yet placed in a region. */
+  regionId: string | null;
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;

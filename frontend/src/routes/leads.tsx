@@ -18,7 +18,7 @@ import { can, stageNeedsValue, stages, type Lead, type LeadStage } from "@/data/
 import { useAuth } from "@/lib/auth/auth-context";
 import { createLead, updateLead } from "@/lib/api/leads";
 import { useCrm } from "@/lib/crm-context";
-import type { ApiUser } from "@/lib/api/users";
+import { agentsForRegion, type ApiUser } from "@/lib/api/users";
 import { EmptyState, PageHeader, SearchField, StatusPill } from "@/components/crm/Primitives";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -450,7 +450,7 @@ function LeadsPage() {
         lead={editing}
         onClose={() => setEditing(null)}
         onSave={save}
-        properties={properties.map((p) => ({ id: p.id, name: p.name }))}
+        properties={properties.map((p) => ({ id: p.id, name: p.name, regionId: p.regionId }))}
         agents={agents}
       />
     </>
@@ -536,6 +536,7 @@ function LeadDrawer({
   onEdit: () => void;
   onClose: () => void;
 }) {
+  const eligible = agentsForRegion(agents, lead.regionId ?? null);
   return (
     <div className="fixed inset-0 z-50">
       <button className="absolute inset-0 bg-overlay" aria-label="Close lead" onClick={onClose} />
@@ -602,15 +603,27 @@ function LeadDrawer({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {agents.map((agent) => (
+                  {eligible.map((agent) => (
                     <SelectItem key={agent.id} value={agent.id}>
                       {agent.fullName}
                     </SelectItem>
                   ))}
+                  {/* An assignment made before the region rule still shows who
+                      holds the lead, but cannot be picked again. */}
+                  {lead.owner && !eligible.some((a) => a.id === lead.ownerId) && (
+                    <SelectItem value={lead.owner.id} disabled>
+                      {lead.owner.fullName} (outside this region)
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
           </div>
+          {eligible.length === 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {noAgentsHint(lead.regionId ?? null)}
+            </p>
+          )}
           {lead.owner && (
             <p className="mt-2 truncate text-xs text-muted-foreground">{lead.owner.email}</p>
           )}
@@ -690,7 +703,9 @@ function LeadDialog({
   lead: Lead | null;
   onClose: () => void;
   onSave: (draft: Partial<Lead>) => Promise<void>;
-  properties: { id: string; name: string }[];
+  // `regionId` is required, not optional: without it every listing looks
+  // unplaced and the agent picker empties.
+  properties: { id: string; name: string; regionId: string | null | undefined }[];
   agents: ApiUser[];
 }) {
   const [stage, setStage] = useState<LeadStage>("New");
@@ -708,6 +723,20 @@ function LeadDialog({
     setOwnerId(lead?.ownerId ?? "");
   }
 
+  // The lead's region follows its listing, so the agents on offer do too. With
+  // no listing it keeps the lead's existing region, and a new lead lands in the
+  // author's own region (none for an owner, who has to pick a listing first).
+  const { user } = useAuth();
+  const dialogRegion = propertyId
+    ? (properties.find((p) => p.id === propertyId)?.regionId ?? null)
+    : lead?.id
+      ? (lead.regionId ?? null)
+      : (user?.regionId ?? null);
+  const eligible = agentsForRegion(agents, dialogRegion);
+  // Switching to a listing in another region drops an agent who no longer fits,
+  // rather than sending an assignment the API would refuse.
+  const chosenOwner = eligible.some((a) => a.id === ownerId) ? ownerId : "";
+
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -724,7 +753,7 @@ function LeadDialog({
       ...(value === "" ? {} : { value: Number(value) }),
       ...(propertyId ? { propertyId } : {}),
       // Explicit null clears the column; a dropped key would leave it as it was.
-      ownerId: ownerId || null,
+      ownerId: chosenOwner || null,
     });
     setSaving(false);
   };
@@ -780,7 +809,7 @@ function LeadDialog({
             </Field>
             <Field label="Showing agent">
               <Select
-                value={ownerId || "unassigned"}
+                value={chosenOwner || "unassigned"}
                 onValueChange={(v) => setOwnerId(v === "unassigned" ? "" : v)}
               >
                 <SelectTrigger>
@@ -788,13 +817,16 @@ function LeadDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {agents.map((agent) => (
+                  {eligible.map((agent) => (
                     <SelectItem key={agent.id} value={agent.id}>
                       {agent.fullName}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {eligible.length === 0 && (
+                <p className="mt-1.5 text-xs text-muted-foreground">{noAgentsHint(dialogRegion)}</p>
+              )}
             </Field>
             <Field label="Stage">
               <Select value={stage} onValueChange={(v) => setStage(v as LeadStage)}>
@@ -837,4 +869,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
+}
+
+/** Why the agent picker is empty: no region to pick from, or nobody in it. */
+function noAgentsHint(regionId: string | null) {
+  return regionId
+    ? "Nobody in this region can take leads yet."
+    : "This lead isn't in a region yet — link it to a listing to choose an agent.";
 }

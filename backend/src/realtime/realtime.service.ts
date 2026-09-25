@@ -41,6 +41,30 @@ export class RealtimeService {
     this.emitToRoom(Rooms.org(orgId), event, payload, options);
   }
 
+  /** Emit to the global roles of an organisation only (system admin, owner). */
+  emitToOrgAdmins<T>(orgId: string, event: string, payload: T, options?: EmitOptions): void {
+    this.emitToRoom(Rooms.orgAdmins(orgId), event, payload, options);
+  }
+
+  /** Emit to everyone working in one region. */
+  emitToRegion<T>(regionId: string, event: string, payload: T, options?: EmitOptions): void {
+    this.emitToRoom(Rooms.region(regionId), event, payload, options);
+  }
+
+  /**
+   * For a region-scoped record (a lead, a person): the global roles always
+   * hear it, and so does the record's own region — nobody else. Use this
+   * rather than `emitToOrg` for anything `region-scope.ts` filters on reads.
+   */
+  emitToRegionScope<T extends { orgId?: string | null; regionId?: string | null }>(
+    event: string,
+    payload: T,
+    options?: EmitOptions,
+  ): void {
+    if (payload.orgId) this.emitToOrgAdmins(payload.orgId, event, payload, options);
+    if (payload.regionId) this.emitToRegion(payload.regionId, event, payload, options);
+  }
+
   /** Emit to everyone currently watching one record, e.g. a lead detail page. */
   emitToEntity<T>(
     type: string,

@@ -99,6 +99,7 @@ export class AuthService {
       email: user.email,
       roles: isUserRole(user.role) ? [user.role] : [],
       ...(user.orgId ? { orgId: user.orgId } : {}),
+      ...(user.regionId ? { regionId: user.regionId } : {}),
     };
     return this.jwt.signAsync(payload);
   }

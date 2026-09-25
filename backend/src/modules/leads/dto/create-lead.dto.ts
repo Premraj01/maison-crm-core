@@ -64,4 +64,13 @@ export class CreateLeadDto {
   @IsOptional()
   @IsUUID()
   orgId?: string;
+
+  /**
+   * Only consulted for a lead with no listing — otherwise the listing's region
+   * wins. A regional user's own region is used whatever is sent.
+   */
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  regionId?: string | null;
 }

@@ -10,6 +10,7 @@ import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PropertiesModule } from './modules/properties/properties.module';
+import { RegionsModule } from './modules/regions/regions.module';
 import { UsersModule } from './modules/users/users.module';
 import { RealtimeModule } from './realtime/realtime.module';
 
@@ -29,6 +30,8 @@ import { RealtimeModule } from './realtime/realtime.module';
     // Registers JwtAuthGuard and RolesGuard globally: every route below is
     // authenticated unless it opts out with @Public().
     AuthModule,
+    // Global — users, properties and leads check region assignments through it.
+    RegionsModule,
     NotificationsModule,
     LeadsModule,
     PropertiesModule,

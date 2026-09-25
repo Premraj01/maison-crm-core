@@ -126,6 +126,15 @@ export class CreatePropertyDto {
   @IsUUID()
   orgId?: string;
 
+  /**
+   * The region whose team sells this listing. A regional user's own region is
+   * used whatever is sent; an owner may name any region, or null to unplace it.
+   */
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  regionId?: string | null;
+
   /** Omit and the server derives one from `name`. */
   @ApiPropertyOptional({ example: 'casa-solana' })
   @IsOptional()

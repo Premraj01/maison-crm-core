@@ -14,11 +14,14 @@ import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as PropertiesRouteImport } from './routes/properties'
+import { Route as RegionsRouteImport } from './routes/regions'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as TeamRouteImport } from './routes/team'
 import { Route as CustomersCustomerIdRouteImport } from './routes/customers.$customerId'
+import { Route as RegionsIndexRouteImport } from './routes/regions.index'
+import { Route as RegionsRegionIdRouteImport } from './routes/regions.$regionId'
 import { Route as TeamIndexRouteImport } from './routes/team.index'
 import { Route as TeamPermissionsRouteImport } from './routes/team.permissions'
 
@@ -47,6 +50,11 @@ const PropertiesRoute = PropertiesRouteImport.update({
   path: '/properties',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RegionsRoute = RegionsRouteImport.update({
+  id: '/regions',
+  path: '/regions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
@@ -72,6 +80,16 @@ const CustomersCustomerIdRoute = CustomersCustomerIdRouteImport.update({
   path: '/$customerId',
   getParentRoute: () => CustomersRoute,
 } as any)
+const RegionsIndexRoute = RegionsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => RegionsRoute,
+} as any)
+const RegionsRegionIdRoute = RegionsRegionIdRouteImport.update({
+  id: '/$regionId',
+  path: '/$regionId',
+  getParentRoute: () => RegionsRoute,
+} as any)
 const TeamIndexRoute = TeamIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -89,12 +107,15 @@ export interface FileRoutesByFullPath {
   '/customers': typeof CustomersRouteWithChildren
   '/leads': typeof LeadsRoute
   '/properties': typeof PropertiesRoute
+  '/regions': typeof RegionsRouteWithChildren
   '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
   '/team': typeof TeamRouteWithChildren
   '/customers/$customerId': typeof CustomersCustomerIdRoute
+  '/regions/$regionId': typeof RegionsRegionIdRoute
   '/team/permissions': typeof TeamPermissionsRoute
+  '/regions/': typeof RegionsIndexRoute
   '/team/': typeof TeamIndexRoute
 }
 export interface FileRoutesByTo {
@@ -107,7 +128,9 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
+  '/regions/$regionId': typeof RegionsRegionIdRoute
   '/team/permissions': typeof TeamPermissionsRoute
+  '/regions': typeof RegionsIndexRoute
   '/team': typeof TeamIndexRoute
 }
 export interface FileRoutesById {
@@ -117,12 +140,15 @@ export interface FileRoutesById {
   '/customers': typeof CustomersRouteWithChildren
   '/leads': typeof LeadsRoute
   '/properties': typeof PropertiesRoute
+  '/regions': typeof RegionsRouteWithChildren
   '/register': typeof RegisterRoute
   '/settings': typeof SettingsRoute
   '/sign-in': typeof SignInRoute
   '/team': typeof TeamRouteWithChildren
   '/customers/$customerId': typeof CustomersCustomerIdRoute
+  '/regions/$regionId': typeof RegionsRegionIdRoute
   '/team/permissions': typeof TeamPermissionsRoute
+  '/regions/': typeof RegionsIndexRoute
   '/team/': typeof TeamIndexRoute
 }
 export interface FileRouteTypes {
@@ -133,12 +159,15 @@ export interface FileRouteTypes {
     | '/customers'
     | '/leads'
     | '/properties'
+    | '/regions'
     | '/register'
     | '/settings'
     | '/sign-in'
     | '/team'
     | '/customers/$customerId'
+    | '/regions/$regionId'
     | '/team/permissions'
+    | '/regions/'
     | '/team/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -151,7 +180,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sign-in'
     | '/customers/$customerId'
+    | '/regions/$regionId'
     | '/team/permissions'
+    | '/regions'
     | '/team'
   id:
     | '__root__'
@@ -160,12 +191,15 @@ export interface FileRouteTypes {
     | '/customers'
     | '/leads'
     | '/properties'
+    | '/regions'
     | '/register'
     | '/settings'
     | '/sign-in'
     | '/team'
     | '/customers/$customerId'
+    | '/regions/$regionId'
     | '/team/permissions'
+    | '/regions/'
     | '/team/'
   fileRoutesById: FileRoutesById
 }
@@ -175,6 +209,7 @@ export interface RootRouteChildren {
   CustomersRoute: typeof CustomersRouteWithChildren
   LeadsRoute: typeof LeadsRoute
   PropertiesRoute: typeof PropertiesRoute
+  RegionsRoute: typeof RegionsRouteWithChildren
   RegisterRoute: typeof RegisterRoute
   SettingsRoute: typeof SettingsRoute
   SignInRoute: typeof SignInRoute
@@ -218,6 +253,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PropertiesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/regions': {
+      id: '/regions'
+      path: '/regions'
+      fullPath: '/regions'
+      preLoaderRoute: typeof RegionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/register': {
       id: '/register'
       path: '/register'
@@ -253,6 +295,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CustomersCustomerIdRouteImport
       parentRoute: typeof CustomersRoute
     }
+    '/regions/': {
+      id: '/regions/'
+      path: '/'
+      fullPath: '/regions/'
+      preLoaderRoute: typeof RegionsIndexRouteImport
+      parentRoute: typeof RegionsRoute
+    }
+    '/regions/$regionId': {
+      id: '/regions/$regionId'
+      path: '/$regionId'
+      fullPath: '/regions/$regionId'
+      preLoaderRoute: typeof RegionsRegionIdRouteImport
+      parentRoute: typeof RegionsRoute
+    }
     '/team/': {
       id: '/team/'
       path: '/'
@@ -282,6 +338,19 @@ const CustomersRouteWithChildren = CustomersRoute._addFileChildren(
   CustomersRouteChildren,
 )
 
+interface RegionsRouteChildren {
+  RegionsRegionIdRoute: typeof RegionsRegionIdRoute
+  RegionsIndexRoute: typeof RegionsIndexRoute
+}
+
+const RegionsRouteChildren: RegionsRouteChildren = {
+  RegionsRegionIdRoute: RegionsRegionIdRoute,
+  RegionsIndexRoute: RegionsIndexRoute,
+}
+
+const RegionsRouteWithChildren =
+  RegionsRoute._addFileChildren(RegionsRouteChildren)
+
 interface TeamRouteChildren {
   TeamPermissionsRoute: typeof TeamPermissionsRoute
   TeamIndexRoute: typeof TeamIndexRoute
@@ -300,6 +369,7 @@ const rootRouteChildren: RootRouteChildren = {
   CustomersRoute: CustomersRouteWithChildren,
   LeadsRoute: LeadsRoute,
   PropertiesRoute: PropertiesRoute,
+  RegionsRoute: RegionsRouteWithChildren,
   RegisterRoute: RegisterRoute,
   SettingsRoute: SettingsRoute,
   SignInRoute: SignInRoute,

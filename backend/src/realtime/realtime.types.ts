@@ -4,6 +4,7 @@ import type { Socket } from 'socket.io';
 export interface RealtimePrincipal {
   userId: string;
   orgId?: string;
+  regionId?: string;
   roles: string[];
   anonymous: boolean;
 }

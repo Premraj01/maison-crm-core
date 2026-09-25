@@ -5,9 +5,10 @@ import type { Property } from "@/data/crm";
  * Properties live in Postgres and are the one record shared with the public
  * beacon-estates website: what is written here is what that site renders.
  *
- * Reads are public on the API, so no token is needed for the list; writes
- * carry the signed-in agent's token and the backend derives the organisation
- * from it.
+ * Reads are public on the API, but the CRM still sends its token: with one,
+ * the API narrows the list to the caller's region, so a regional user never
+ * receives another region's listings. Writes carry the token too, and the
+ * backend derives the organisation and region from it.
  */
 
 interface Paginated<T> {
@@ -16,7 +17,7 @@ interface Paginated<T> {
 }
 
 /** Fields the backend owns — the form never sends these. */
-type ServerOwned = "id" | "slug" | "createdAt" | "updatedAt" | "orgId";
+type ServerOwned = "id" | "slug" | "createdAt" | "updatedAt" | "orgId" | "regionId";
 
 export type PropertyDraft = Omit<Property, ServerOwned>;
 
@@ -25,8 +26,21 @@ export type PropertyDraft = Omit<Property, ServerOwned>;
  * browser, which keeps the search box instant. Raise this to a real paged query
  * if a workspace ever outgrows one screenful of requests.
  */
-export function fetchProperties(): Promise<Paginated<Property>> {
-  return apiRequest<Paginated<Property>>("/properties?limit=200");
+export function fetchProperties(token: string): Promise<Paginated<Property>> {
+  return apiRequest<Paginated<Property>>("/properties?limit=200", { token });
+}
+
+/**
+ * Moves a listing into a region, or out of every region with `null`. Owners and
+ * system admins only — the API keeps anyone else inside their own region. The
+ * listing's leads move with it.
+ */
+export function setPropertyRegion(
+  id: string,
+  regionId: string | null,
+  token: string,
+): Promise<Property> {
+  return apiRequest<Property>(`/properties/${id}`, { method: "PATCH", body: { regionId }, token });
 }
 
 export function createProperty(draft: PropertyDraft, token: string): Promise<Property> {

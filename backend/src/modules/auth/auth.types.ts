@@ -11,6 +11,8 @@ export interface JwtPayload {
   sub: string;
   email: string;
   orgId?: string;
+  /** Absent for the global roles. Used to put the socket in its region's room. */
+  regionId?: string;
   roles: UserRole[];
 }
 
@@ -21,6 +23,8 @@ export interface AuthenticatedUser {
   fullName: string;
   role: UserRole;
   orgId: string | null;
+  /** Null for the global roles, and for anyone not yet placed in a region. */
+  regionId: string | null;
 }
 
 export type AuthenticatedRequest = Request & { user?: AuthenticatedUser };

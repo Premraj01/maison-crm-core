@@ -35,7 +35,8 @@ function Permissions() {
       />
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[650px] text-left">
+          {/* Wide enough for six role columns — the names are long. */}
+          <table className="w-full min-w-[980px] text-left">
             <thead>
               <tr className="border-b border-border">
                 <th className="p-5 font-display text-lg font-medium">Capability</th>

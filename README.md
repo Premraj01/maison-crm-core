@@ -67,12 +67,18 @@ Backend details — architecture, realtime protocol, migrations — are in
 password `Maison!2026` (override with `SEED_PASSWORD`). Re-running it is safe —
 it updates the existing rows and resets the passwords.
 
-| Email              | Role   | Can                                            |
-| ------------------ | ------ | ---------------------------------------------- |
-| `owner@maison.co`  | owner  | everything, including deleting users           |
-| `admin@maison.co`  | admin  | manage team, settings, audit log               |
-| `agent@maison.co`  | agent  | create and edit leads and customers            |
-| `viewer@maison.co` | viewer | read only                                      |
+| Email                        | Role                      | Region     | Can                                      |
+| ---------------------------- | ------------------------- | ---------- | ---------------------------------------- |
+| `sysadmin@maison.co`         | `system_admin`            | all        | everything, across every organisation    |
+| `owner@maison.co`            | `owner`                   | all        | everything in this workspace             |
+| `region@maison.co`           | `region_head`             | West Coast | manage team, settings, audit log         |
+| `sdr@maison.co`              | `sales_development_rep`   | West Coast | create and edit leads and customers      |
+| `advisor@maison.co`          | `property_advisor`        | West Coast | the above, plus create and edit listings |
+| `coordinator@maison.co`      | `transaction_coordinator` | West Coast | edit leads and customers                 |
+| `east.region@maison.co`      | `region_head`             | East Coast | as `region@`, for the East Coast         |
+| `east.sdr@maison.co`         | `sales_development_rep`   | East Coast | as `sdr@`                                |
+| `east.advisor@maison.co`     | `property_advisor`        | East Coast | as `advisor@`                            |
+| `east.coordinator@maison.co` | `transaction_coordinator` | East Coast | as `coordinator@`                        |
 
 In development the sign-in page shows a role picker that fills the form for you.
 
@@ -83,7 +89,7 @@ WebSocket handshake. On the backend `JwtAuthGuard` is registered globally, so a
 
 ```ts
 @Public()                 // no token required — e.g. /api/health
-@Roles('admin')           // admin or anything above it (owner)
+@Roles('region_head')     // region_head or anything above it (owner, system_admin)
 @CurrentUser('id') actorId: string
 ```
 
@@ -92,8 +98,37 @@ least privileged and is the source of truth; `Role` in `frontend/src/data/crm.ts
 mirrors it. Adding a role means editing both, plus the seed script — which fails
 loudly if a role has no seeded account.
 
+> [!NOTE]
+> The six roles are in place, but the **hierarchy is not settled**. The order in
+> `USER_ROLES` is simply the order they were specified in, and `roleAtLeast`
+> reads that order literally — so today `@Roles('property_advisor')` also admits
+> a sales development rep. Both the ranking and the permission matrix in
+> `frontend/src/data/crm.ts` are provisional and will be revisited.
+
+## Regions
+
+A region is a sales territory with its own team (region head, SDRs, property
+advisors, transaction coordinators), its own listings, and the leads on them.
+`users`, `properties` and `leads` each carry a `regionId`; a lead takes its
+listing's region, or its author's for a general enquiry.
+
+**Only `system_admin` and `owner` see across regions.** Everyone else sees only
+their own region's people, listings and leads. That is enforced by the API in
+`backend/src/modules/regions/region-scope.ts`, which every users/properties/leads
+query goes through, not just by hiding the sidebar link. Another region's record
+answers 404, so nobody can tell it exists. A regional user who hasn't been placed
+in a region sees nothing regional.
+
+Owners manage regions from **Regions** in the sidebar (`/regions`): create,
+rename, delete, and move people and listings between regions. When a listing
+moves, its leads move with it. Deleting a region releases its people, listings
+and leads; they stay visible to owners until placed elsewhere.
+
+`GET /api/properties` stays public for the website. With a token it narrows to
+the caller's region, and the CRM always sends one.
+
 Registration is not wired up yet: accounts are created by the seed script or by
-an admin through `POST /api/users`.
+a region head (or above) through `POST /api/users`.
 
 ## Realtime, end to end
 

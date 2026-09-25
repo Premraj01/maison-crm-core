@@ -43,13 +43,20 @@ export class WsAuthGuard implements CanActivate {
         sub?: string;
         userId?: string;
         orgId?: string;
+        regionId?: string;
         roles?: string[];
       }>(token, { secret: this.config.get('jwt.secret', { infer: true }) });
 
       const userId = claims.sub ?? claims.userId;
       if (!userId) throw new Error('token carries no subject');
 
-      return { userId, orgId: claims.orgId, roles: claims.roles ?? [], anonymous: false };
+      return {
+        userId,
+        orgId: claims.orgId,
+        regionId: claims.regionId,
+        roles: claims.roles ?? [],
+        anonymous: false,
+      };
     } catch (error) {
       this.logger.warn(
         `Rejected socket ${socket.id}: ${error instanceof Error ? error.message : 'invalid token'}`,

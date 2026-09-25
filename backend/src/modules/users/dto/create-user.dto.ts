@@ -10,10 +10,10 @@ import {
   MinLength,
 } from 'class-validator';
 
-import { USER_ROLES, type UserRole } from '../users.types';
+import { DEFAULT_USER_ROLE, USER_ROLES, type UserRole } from '../users.types';
 
 export class CreateUserDto {
-  @ApiProperty({ example: 'agent@maison.co' })
+  @ApiProperty({ example: 'advisor@maison.co' })
   @IsEmail()
   @MaxLength(255)
   email!: string;
@@ -35,7 +35,16 @@ export class CreateUserDto {
   @IsUUID()
   orgId?: string;
 
-  @ApiPropertyOptional({ enum: USER_ROLES, default: 'agent' })
+  /**
+   * The region this person works in. Ignored for the global roles, which have
+   * none; a region head's own region is used whatever is sent.
+   */
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  regionId?: string | null;
+
+  @ApiPropertyOptional({ enum: USER_ROLES, default: DEFAULT_USER_ROLE })
   @IsOptional()
   @IsIn(USER_ROLES)
   role?: UserRole;

@@ -4,6 +4,10 @@ import { PaginatedResult, paginated } from '../../common/dto/pagination.dto';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { RealtimeService } from '../../realtime/realtime.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import type { AuthenticatedUser } from '../auth/auth.types';
+import { type Viewer, regionWhere, writableRegion } from '../regions/region-scope';
+import { RegionsService } from '../regions/regions.service';
+import { isGlobalRole, isUserRole } from '../users/users.types';
 import { CreateEnquiryDto } from './dto/create-enquiry.dto';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { QueryLeadDto } from './dto/query-lead.dto';
@@ -29,6 +33,10 @@ type Lead = Prisma.LeadGetPayload<{ select: typeof leadSelect }>;
  * always New, the source always Website, the organisation is inherited from
  * the listing rather than supplied, and the listing is resolved from a public
  * slug so no internal id has to be guessable.
+ *
+ * Each lead belongs to a region: its listing's, or for a general enquiry the
+ * region of whoever added it. Everything else here is scoped to the caller's
+ * region through `region-scope.ts`.
  */
 @Injectable()
 export class LeadsService {
@@ -38,6 +46,7 @@ export class LeadsService {
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogService,
     private readonly realtime: RealtimeService,
+    private readonly regions: RegionsService,
   ) {}
 
   /** The public website's viewing form. No token; see the class comment. */
@@ -50,7 +59,7 @@ export class LeadsService {
     const property = propertySlug
       ? await this.prisma.property.findFirst({
           where: { slug: propertySlug, deletedAt: null },
-          select: { id: true, orgId: true, name: true },
+          select: { id: true, orgId: true, regionId: true, name: true },
         })
       : null;
 
@@ -67,6 +76,9 @@ export class LeadsService {
         source: 'Website',
         propertyId: property?.id ?? null,
         orgId: property?.orgId ?? null,
+        // Lands straight in the region that sells the listing. A general
+        // enquiry has no region; the global roles pick it up and place it.
+        regionId: property?.regionId ?? null,
         ownerId: null,
       },
       select: leadSelect,
@@ -86,13 +98,17 @@ export class LeadsService {
     return lead;
   }
 
-  async create(dto: CreateLeadDto, actorId = 'system') {
+  async create(dto: CreateLeadDto, actor: AuthenticatedUser) {
     assertValueForStage(dto.stage ?? 'New', dto.value ?? null);
+
+    const regionId = await this.resolveRegion(actor, dto.propertyId, dto.regionId);
+    await this.assertOwnerFits(dto.ownerId, regionId);
 
     const lead = await guardReferences(() =>
       this.prisma.lead.create({
         data: {
           ...dto,
+          regionId,
           message: dto.message ?? '',
           stage: dto.stage ?? 'New',
           source: dto.source ?? 'Website',
@@ -102,7 +118,7 @@ export class LeadsService {
     );
 
     await this.auditLogs.record({
-      actorId,
+      actorId: actor.id,
       orgId: lead.orgId ?? undefined,
       action: 'lead.created',
       entityType: 'lead',
@@ -114,9 +130,10 @@ export class LeadsService {
     return lead;
   }
 
-  async findAll(query: QueryLeadDto): Promise<PaginatedResult<Lead>> {
+  async findAll(query: QueryLeadDto, viewer: Viewer): Promise<PaginatedResult<Lead>> {
     const where = {
       deletedAt: null,
+      ...regionWhere(viewer),
       ...(query.stage ? { stage: query.stage } : {}),
       ...(query.propertyId ? { propertyId: query.propertyId } : {}),
       ...(query.search
@@ -142,17 +159,31 @@ export class LeadsService {
     return paginated(items as Lead[], total, query);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, viewer: Viewer) {
     const lead = await this.prisma.lead.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...regionWhere(viewer) },
       select: leadSelect,
     });
     if (!lead) throw new NotFoundException(`Lead ${id} not found`);
     return lead;
   }
 
-  async update(id: string, dto: UpdateLeadDto, actorId = 'system') {
-    const before = await this.findOne(id);
+  async update(id: string, dto: UpdateLeadDto, actor: AuthenticatedUser) {
+    const before = await this.findOne(id, actor);
+
+    // Re-derived only when the listing or region is being changed, so moving
+    // a pipeline card never re-checks placement.
+    const regionId =
+      dto.propertyId !== undefined || dto.regionId !== undefined
+        ? await this.resolveRegion(
+            actor,
+            dto.propertyId === undefined ? before.propertyId : dto.propertyId,
+            dto.regionId === undefined ? before.regionId : dto.regionId,
+          )
+        : before.regionId;
+    if (dto.ownerId !== undefined || regionId !== before.regionId) {
+      await this.assertOwnerFits(dto.ownerId === undefined ? before.ownerId : dto.ownerId, regionId);
+    }
 
     // Checked against the state the lead will END in: a request may move the
     // stage, set the value, or both at once, and only the result matters.
@@ -166,6 +197,7 @@ export class LeadsService {
         where: { id },
         data: {
           ...dto,
+          regionId,
           // Any edit is contact of a sort; moving a card up the pipeline is the
           // clearest signal the CRM has that someone touched this lead.
           lastContactAt: new Date(),
@@ -175,7 +207,7 @@ export class LeadsService {
     );
 
     await this.auditLogs.record({
-      actorId,
+      actorId: actor.id,
       orgId: after.orgId ?? undefined,
       action: 'lead.updated',
       entityType: 'lead',
@@ -190,8 +222,8 @@ export class LeadsService {
   }
 
   /** Soft delete — the row is kept for auditing. */
-  async remove(id: string, actorId = 'system'): Promise<void> {
-    const lead = await this.findOne(id);
+  async remove(id: string, actor: AuthenticatedUser): Promise<void> {
+    const lead = await this.findOne(id, actor);
     await this.prisma.lead.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -199,7 +231,7 @@ export class LeadsService {
     });
 
     await this.auditLogs.record({
-      actorId,
+      actorId: actor.id,
       orgId: lead.orgId ?? undefined,
       action: 'lead.deleted',
       entityType: 'lead',
@@ -207,19 +239,61 @@ export class LeadsService {
       before: { ...lead },
     });
 
-    this.announce('lead.deleted', { id, orgId: lead.orgId });
+    this.announce('lead.deleted', { id, orgId: lead.orgId, regionId: lead.regionId });
+  }
+
+  /**
+   * The region a lead belongs in. A listing decides it when there is one — and
+   * must be a listing the actor can see, so nobody files a lead against another
+   * region's property. Otherwise it is the actor's region, or for an owner the
+   * region they named.
+   */
+  private async resolveRegion(
+    actor: AuthenticatedUser,
+    propertyId: string | null | undefined,
+    requested: string | null | undefined,
+  ): Promise<string | null> {
+    if (propertyId) {
+      const property = await this.prisma.property.findFirst({
+        where: { id: propertyId, deletedAt: null, ...regionWhere(actor) },
+        select: { regionId: true },
+      });
+      if (!property) throw new BadRequestException('That agent or listing does not exist');
+      return property.regionId;
+    }
+    const regionId = writableRegion(actor, requested);
+    await this.regions.assertAssignable(regionId);
+    return regionId;
+  }
+
+  /**
+   * The assigned agent must be an active member of the lead's own region.
+   * Owners and system admins belong to no region, so they cannot hold a lead,
+   * and a lead with no region cannot be assigned until it is placed. One
+   * message for every miss, so the check cannot be used to discover other
+   * regions' staff.
+   */
+  private async assertOwnerFits(ownerId: string | null | undefined, regionId: string | null) {
+    if (!ownerId) return;
+    const owner = regionId
+      ? await this.prisma.user.findFirst({
+          where: { id: ownerId, regionId, deletedAt: null, isActive: true },
+          select: { role: true },
+        })
+      : null;
+    const fits = owner !== null && isUserRole(owner.role) && !isGlobalRole(owner.role);
+    if (!fits) throw new BadRequestException("Only someone in this lead's region can take it");
   }
 
   /**
    * Leads are internal, so unlike properties there is no public topic — only
-   * the owning organisation's room, and a per-listing topic the CRM's property
-   * view can subscribe to.
+   * the global roles and the lead's own region hear about it, plus a
+   * per-listing topic the CRM's property view can subscribe to.
    */
-  private announce<T extends { orgId?: string | null; propertyId?: string | null }>(
-    event: string,
-    payload: T,
-  ): void {
-    if (payload.orgId) this.realtime.emitToOrg(payload.orgId, event, payload);
+  private announce<
+    T extends { orgId?: string | null; regionId?: string | null; propertyId?: string | null },
+  >(event: string, payload: T): void {
+    this.realtime.emitToRegionScope(event, payload);
     if (payload.propertyId) {
       this.realtime.emitToEntity('property', payload.propertyId, event, payload);
     }

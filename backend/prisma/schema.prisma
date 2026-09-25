@@ -36,14 +36,23 @@ model User {
   lastLoginAt  DateTime? @db.Timestamptz(6)
 
   /// Kept as varchar rather than a Postgres enum so roles can be added without
-  /// a type migration. The allowed values live in `UserRole` (users.types.ts).
-  role     String  @default("agent") @db.VarChar(32)
+  /// a type migration. The allowed values live in `UserRole` (users.types.ts),
+  /// and the default mirrors `DEFAULT_USER_ROLE` there.
+  role     String  @default("property_advisor") @db.VarChar(32)
   isActive Boolean @default(true)
+
+  /// The region this person works in. Null for the two global roles —
+  /// `system_admin` and `owner` see every region — and for anyone not yet
+  /// placed in one, who then sees no regional records at all. `SetNull` so
+  /// retiring a region releases its people rather than deleting them.
+  regionId String? @db.Uuid
+  region   Region? @relation(fields: [regionId], references: [id], onDelete: SetNull)
 
   /// Leads assigned to this agent to show and follow up.
   assignedLeads Lead[] @relation("LeadOwner")
 
   @@index([orgId])
+  @@index([regionId])
   @@map("users")
 }
 
@@ -95,11 +104,17 @@ model Property {
 
   orgId String? @db.Uuid
 
+  /// The region whose team sells this listing. Null until an owner places it,
+  /// in which case only the global roles see it in the CRM.
+  regionId String? @db.Uuid
+  region   Region? @relation(fields: [regionId], references: [id], onDelete: SetNull)
+
   /// Enquiries raised against this listing — chiefly "Book a viewing" on the
   /// public website, which is what makes a lead property-specific.
   leads Lead[]
 
   @@index([orgId])
+  @@index([regionId])
   @@index([listing])
   @@index([kind])
   @@index([status])
@@ -147,10 +162,45 @@ model Lead {
 
   orgId String? @db.Uuid
 
+  /// Copied from the listing when there is one, otherwise from the agent who
+  /// added the lead. Stored rather than joined through `property` so a general
+  /// enquiry can belong to a region too, and so region scoping is one indexed
+  /// column. Kept in step by `LeadsService` whenever `propertyId` changes.
+  regionId String? @db.Uuid
+  region   Region? @relation(fields: [regionId], references: [id], onDelete: SetNull)
+
   lastContactAt DateTime? @db.Timestamptz(6)
 
   @@index([propertyId])
   @@index([orgId])
+  @@index([regionId])
   @@index([stage])
   @@map("leads")
+}
+
+/// A sales territory. Each has its own team — a region head, sales development
+/// reps, property advisors, transaction coordinators — its own listings, and the
+/// leads raised on them. Only `system_admin` and `owner` see across regions;
+/// everyone else sees their own region only. The scoping lives in
+/// `src/modules/regions/region-scope.ts`.
+model Region {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  /// Soft delete, as everywhere else — reads filter on `deletedAt: null`.
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  name        String @db.VarChar(120)
+  /// Short code shown on badges, e.g. "WC" for West Coast.
+  code        String @db.VarChar(12)
+  description String @default("")
+
+  orgId String? @db.Uuid
+
+  users      User[]
+  properties Property[]
+  leads      Lead[]
+
+  @@index([orgId])
+  @@map("regions")
 }

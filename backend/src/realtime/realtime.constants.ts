@@ -24,6 +24,14 @@ export const Rooms = {
   user: (userId: string) => `user:${userId}`,
   /** Everyone in an organisation — tenant-wide broadcasts. */
   org: (orgId: string) => `org:${orgId}`,
+  /**
+   * The global roles of an organisation (system admin, owner) — the only
+   * people who may hear about every region. Auto-joined on connect; the access
+   * policy refuses it as a subscription, since it does not equal `org(orgId)`.
+   */
+  orgAdmins: (orgId: string) => `org:${orgId}:admins`,
+  /** Everyone working in one region. Auto-joined on connect, never subscribed. */
+  region: (regionId: string) => `region:${regionId}`,
   /** Everyone holding one record open, e.g. `entity:lead:42`. */
   entity: (type: string, id: string) => `entity:${type}:${id}`,
   /** Free-form topic channel, e.g. `topic:dashboard-metrics`. */

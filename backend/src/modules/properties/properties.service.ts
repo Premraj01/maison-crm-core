@@ -4,6 +4,9 @@ import { PaginatedResult, paginated } from '../../common/dto/pagination.dto';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { RealtimeService } from '../../realtime/realtime.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import type { AuthenticatedUser } from '../auth/auth.types';
+import { type Viewer, regionWhere, writableRegion } from '../regions/region-scope';
+import { RegionsService } from '../regions/regions.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { QueryPropertyDto } from './dto/query-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
@@ -21,6 +24,9 @@ const SLUG_ATTEMPTS = 20;
  * routes on the controller. That makes the soft-delete filter load-bearing —
  * a listing taken down in the CRM must stop appearing on the website, so every
  * read below is scoped with `deletedAt: null`.
+ *
+ * Reads take an optional viewer: absent for the website, which sees the whole
+ * portfolio; present for the CRM, where a regional user sees their region only.
  */
 @Injectable()
 export class PropertiesService {
@@ -28,10 +34,13 @@ export class PropertiesService {
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogService,
     private readonly realtime: RealtimeService,
+    private readonly regions: RegionsService,
   ) {}
 
-  async create(dto: CreatePropertyDto, actorId = 'system'): Promise<PublicProperty> {
+  async create(dto: CreatePropertyDto, actor: AuthenticatedUser): Promise<PublicProperty> {
     const { slug: requested, ...rest } = dto;
+    const regionId = writableRegion(actor, rest.regionId);
+    await this.regions.assertAssignable(regionId);
     const base = requested?.trim() ? slugify(requested) : slugify(dto.name);
 
     // Two agents can publish "Villa Aster" on the same afternoon, so the slug
@@ -42,7 +51,7 @@ export class PropertiesService {
       const slug = attempt === 0 ? base : `${base}-${attempt + 1}`;
       try {
         property = await this.prisma.property.create({
-          data: { ...rest, slug, orgId: rest.orgId ?? null },
+          data: { ...rest, slug, orgId: rest.orgId ?? null, regionId },
           select: publicPropertySelect,
         });
         break;
@@ -62,7 +71,7 @@ export class PropertiesService {
     }
 
     await this.auditLogs.record({
-      actorId,
+      actorId: actor.id,
       orgId: property.orgId ?? undefined,
       action: 'property.created',
       entityType: 'property',
@@ -74,9 +83,13 @@ export class PropertiesService {
     return property;
   }
 
-  async findAll(query: QueryPropertyDto): Promise<PaginatedResult<PublicProperty>> {
+  async findAll(
+    query: QueryPropertyDto,
+    viewer?: Viewer,
+  ): Promise<PaginatedResult<PublicProperty>> {
     const where = {
       deletedAt: null,
+      ...(viewer ? regionWhere(viewer) : {}),
       ...(query.kind ? { kind: query.kind } : {}),
       ...(query.listing ? { listing: query.listing } : {}),
       ...(query.status ? { status: query.status } : {}),
@@ -113,10 +126,11 @@ export class PropertiesService {
    * Accepts either a UUID or a slug, so the website can resolve
    * `/properties/casa-solana` without first looking the id up.
    */
-  async findOne(idOrSlug: string): Promise<PublicProperty> {
+  async findOne(idOrSlug: string, viewer?: Viewer): Promise<PublicProperty> {
     const property = await this.prisma.property.findFirst({
       where: {
         deletedAt: null,
+        ...(viewer ? regionWhere(viewer) : {}),
         ...(isUuid(idOrSlug) ? { id: idOrSlug } : { slug: idOrSlug }),
       },
       select: publicPropertySelect,
@@ -128,17 +142,34 @@ export class PropertiesService {
   async update(
     id: string,
     dto: UpdatePropertyDto,
-    actorId = 'system',
+    actor: AuthenticatedUser,
   ): Promise<PublicProperty> {
-    const before = await this.findOne(id);
+    const before = await this.findOne(id, actor);
+
+    const regionId =
+      dto.regionId === undefined ? before.regionId : writableRegion(actor, dto.regionId);
+    if (regionId !== before.regionId) await this.regions.assertAssignable(regionId);
 
     let after: PublicProperty;
     try {
-      after = await this.prisma.property.update({
-        where: { id: before.id },
-        data: dto.slug ? { ...dto, slug: slugify(dto.slug) } : dto,
-        select: publicPropertySelect,
-      });
+      // A listing's leads live in its region, so moving the listing moves them
+      // too — otherwise its enquiries would stay with a team that no longer
+      // sells it.
+      [after] = await this.prisma.$transaction([
+        this.prisma.property.update({
+          where: { id: before.id },
+          data: { ...dto, ...(dto.slug ? { slug: slugify(dto.slug) } : {}), regionId },
+          select: publicPropertySelect,
+        }),
+        ...(regionId === before.regionId
+          ? []
+          : [
+              this.prisma.lead.updateMany({
+                where: { propertyId: before.id, deletedAt: null },
+                data: { regionId },
+              }),
+            ]),
+      ]);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException(`A property with slug "${dto.slug}" already exists`);
@@ -147,7 +178,7 @@ export class PropertiesService {
     }
 
     await this.auditLogs.record({
-      actorId,
+      actorId: actor.id,
       orgId: after.orgId ?? undefined,
       action: 'property.updated',
       entityType: 'property',
@@ -162,8 +193,8 @@ export class PropertiesService {
   }
 
   /** Soft delete — the row is kept for auditing, and drops off both apps. */
-  async remove(id: string, actorId = 'system'): Promise<void> {
-    const property = await this.findOne(id);
+  async remove(id: string, actor: AuthenticatedUser): Promise<void> {
+    const property = await this.findOne(id, actor);
     await this.prisma.property.update({
       where: { id: property.id },
       data: { deletedAt: new Date() },
@@ -171,7 +202,7 @@ export class PropertiesService {
     });
 
     await this.auditLogs.record({
-      actorId,
+      actorId: actor.id,
       orgId: property.orgId ?? undefined,
       action: 'property.deleted',
       entityType: 'property',

@@ -203,10 +203,12 @@ function SignIn() {
 const SEED_PASSWORD = "Maison!2026";
 
 const SEED_ACCOUNTS = [
+  { role: "System Admin", email: "sysadmin@maison.co" },
   { role: "Owner", email: "owner@maison.co" },
-  { role: "Admin", email: "admin@maison.co" },
-  { role: "Agent", email: "agent@maison.co" },
-  { role: "Viewer", email: "viewer@maison.co" },
+  { role: "Region Head", email: "region@maison.co" },
+  { role: "Sales Development Rep", email: "sdr@maison.co" },
+  { role: "Property Advisor", email: "advisor@maison.co" },
+  { role: "Transaction Coordinator", email: "coordinator@maison.co" },
 ];
 
 /**

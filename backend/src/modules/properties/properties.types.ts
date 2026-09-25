@@ -63,6 +63,9 @@ export const publicPropertySelect = {
   features: true,
   images: true,
   orgId: true,
+  /// An opaque id only — the region's name and team are never on a public
+  /// read. The CRM uses it to label and scope listings.
+  regionId: true,
 } as const;
 
 export type PublicProperty = Omit<Property, 'deletedAt'>;

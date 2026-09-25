@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bath,
   BedDouble,
@@ -20,6 +20,7 @@ import {
   can,
   hasRooms,
   isArchived,
+  isGlobalRole,
   listingTypes,
   propertyKinds,
   propertyStatuses,
@@ -30,6 +31,7 @@ import {
 } from "@/data/crm";
 import { useAuth } from "@/lib/auth/auth-context";
 import { createProperty, updateProperty, type PropertyDraft } from "@/lib/api/properties";
+import { fetchRegions, type Region } from "@/lib/api/regions";
 import { useCrm } from "@/lib/crm-context";
 import { EmptyState, PageHeader, SearchField, StatusPill } from "@/components/crm/Primitives";
 import { Button } from "@/components/ui/button";
@@ -142,9 +144,34 @@ function PropertiesPage() {
     [kindFilter, setKindFilter] = useState("All"),
     [statusFilter, setStatusFilter] = useState("Available"),
     [listingFilter, setListingFilter] = useState("All"),
+    [regionFilter, setRegionFilter] = useState("All"),
     [editing, setEditing] = useState<Property | null>(null);
   const canCreate = can(role, "property:create"),
     canEdit = can(role, "property:edit");
+
+  // Only owners and system admins see more than one region, so only they get
+  // the region filter and the per-region grouping. Everyone else's list is
+  // already their own region's, and the API refuses them `/regions` anyway.
+  const global = isGlobalRole(role);
+  const [regions, setRegions] = useState<Region[]>([]);
+  useEffect(() => {
+    if (!token || !global) {
+      setRegions([]);
+      return;
+    }
+    let cancelled = false;
+    fetchRegions(token)
+      .then((list) => {
+        if (!cancelled) setRegions(list);
+      })
+      .catch(() => {
+        if (!cancelled) setRegions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, global]);
+  const regionName = useMemo(() => new Map(regions.map((r) => [r.id, r.name])), [regions]);
 
   const filtered = useMemo(
     () =>
@@ -154,10 +181,34 @@ function PropertiesPage() {
           (listingFilter === "All" || p.listing === listingFilter) &&
           (statusFilter === "All" ||
             (statusFilter === "Archived" ? isArchived(p.status) : p.status === statusFilter)) &&
+          (regionFilter === "All" ||
+            (regionFilter === "None" ? !p.regionId : p.regionId === regionFilter)) &&
           `${p.name} ${p.address}`.toLowerCase().includes(search.toLowerCase()),
       ),
-    [properties, search, kindFilter, listingFilter, statusFilter],
+    [properties, search, kindFilter, listingFilter, statusFilter, regionFilter],
   );
+
+  // Sorted by region name, A to Z, with listings in no region last. Within a
+  // region the API's order (newest first) is kept, since the sort is stable.
+  // A region the list doesn't know yet (just created elsewhere) sorts with the
+  // unplaced rather than vanishing.
+  const groups = useMemo(() => {
+    if (!global) return [{ key: "all", title: null as string | null, items: filtered }];
+    const byRegion = new Map<string, Property[]>();
+    for (const p of filtered) {
+      const key = p.regionId && regionName.has(p.regionId) ? p.regionId : "none";
+      byRegion.set(key, [...(byRegion.get(key) ?? []), p]);
+    }
+    return [...byRegion.entries()]
+      .map(([key, items]) => ({
+        key,
+        title: key === "none" ? "Not in a region" : (regionName.get(key) ?? ""),
+        items,
+      }))
+      .sort((a, b) =>
+        a.key === "none" ? 1 : b.key === "none" ? -1 : a.title.localeCompare(b.title),
+      );
+  }, [filtered, global, regionName]);
 
   return (
     <>
@@ -218,6 +269,22 @@ function PropertiesPage() {
             ))}
           </SelectContent>
         </Select>
+        {global && (
+          <Select value={regionFilter} onValueChange={setRegionFilter}>
+            <SelectTrigger className="w-full sm:w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All regions</SelectItem>
+              {regions.map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.name}
+                </SelectItem>
+              ))}
+              <SelectItem value="None">Not in a region</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {propertiesStatus === "loading" ? (
@@ -238,158 +305,183 @@ function PropertiesPage() {
           }
         />
       ) : filtered.length ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((p) => (
-            <Card key={p.id} className="reveal-card group flex h-full flex-col overflow-hidden">
-              <div className="relative aspect-[4/3] overflow-hidden bg-secondary">
-                {p.images.length ? (
-                  <img
-                    src={p.images[0]}
-                    alt={p.name}
-                    // Archived listings are blurred rather than hidden. The
-                    // slight scale hides the transparent edge blur leaves.
-                    className={`size-full object-cover transition-transform duration-300 ${
-                      isArchived(p.status)
-                        ? "scale-110 blur-[6px] saturate-50"
-                        : "group-hover:scale-[1.03]"
-                    }`}
-                  />
-                ) : (
-                  <div className="grid size-full place-items-center text-muted-foreground">
-                    <Building2 className="size-8" />
-                  </div>
-                )}
-                {isArchived(p.status) && (
-                  <div className="absolute inset-0 grid place-items-center bg-overlay">
-                    <span className="rounded-full bg-background/95 px-4 py-1.5 font-display text-lg tracking-wide">
-                      {p.status}
-                    </span>
-                  </div>
-                )}
-                <div className="absolute left-3 top-3">
-                  <StatusPill
-                    tone={
-                      isArchived(p.status) ? "neutral" : p.listing === "Rent" ? "accent" : "success"
-                    }
+        <div className="space-y-10">
+          {groups.map((group) => (
+            <section key={group.key}>
+              {group.title && (
+                <div className="mb-4 flex items-baseline justify-between gap-3 border-b border-border pb-2">
+                  <h2
+                    className={`font-display text-2xl ${group.key === "none" ? "text-muted-foreground" : ""}`}
                   >
-                    {isArchived(p.status) ? p.status : `For ${p.listing.toLowerCase()}`}
-                  </StatusPill>
-                </div>
-                {(enquiries.get(p.id) ?? 0) > 0 && (
-                  <Link
-                    to="/leads"
-                    search={{ property: p.id }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground transition-transform hover:scale-105"
-                    title="See the enquiries for this listing"
-                  >
-                    <MessageSquare className="size-3" />
-                    {enquiries.get(p.id)}
-                  </Link>
-                )}
-                {p.images.length > 1 && (
-                  <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-overlay px-2 py-1 text-[11px] font-semibold text-white">
-                    <Images className="size-3" />
-                    {p.images.length}
+                    {group.title}
+                  </h2>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {group.items.length} listing{group.items.length === 1 ? "" : "s"}
                   </span>
-                )}
-              </div>
-              <div
-                className={`flex flex-1 flex-col p-5 ${isArchived(p.status) ? "opacity-70" : ""}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <h2 className="font-display text-xl leading-tight">{p.name}</h2>
-                  <StatusPill>{p.kind}</StatusPill>
                 </div>
-                <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-                  <MapPin className="mt-px size-3.5 shrink-0" />
-                  <span>{p.address}</span>
-                </p>
-                <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  {p.bedrooms != null && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <BedDouble className="size-3.5" />
-                      {p.bedrooms} bed
-                    </span>
-                  )}
-                  {p.bathrooms != null && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <Bath className="size-3.5" />
-                      {p.bathrooms} bath
-                    </span>
-                  )}
-                  {p.area != null && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <Ruler className="size-3.5" />
-                      {p.area.toLocaleString("en-US")} sq ft
-                    </span>
-                  )}
-                </div>
-                {p.details && (
-                  <p className="mt-3 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                    {p.details}
-                  </p>
-                )}
-                {p.features && p.features.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {p.features.slice(0, 3).map((f) => (
-                      <span
-                        key={f}
-                        className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground"
-                      >
-                        {f}
-                      </span>
-                    ))}
-                    {p.features.length > 3 && (
-                      <span className="px-1 py-0.5 text-[10px] text-muted-foreground">
-                        +{p.features.length - 3} more
-                      </span>
-                    )}
-                  </div>
-                )}
-                <div className="mt-auto flex items-end justify-between border-t border-border pt-4">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[.14em] text-muted-foreground">
-                      {isArchived(p.status)
-                        ? p.status === "Sold"
-                          ? "Sold for"
-                          : "Let at"
-                        : p.listing === "Rent"
-                          ? "Rent"
-                          : "Asking price"}
-                    </p>
-                    <p
-                      className={`mt-1 font-semibold ${p.price === undefined || p.price === null ? "text-muted-foreground" : ""}`}
-                    >
-                      {priceLabel(p)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {p.slug && (
-                      <Button variant="ghost" size="sm" asChild>
-                        <a
-                          href={`${SITE_URL}/properties/${p.slug}`}
-                          target="_blank"
-                          rel="noreferrer"
+              )}
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {group.items.map((p) => (
+                  <Card
+                    key={p.id}
+                    className="reveal-card group flex h-full flex-col overflow-hidden"
+                  >
+                    <div className="relative aspect-[4/3] overflow-hidden bg-secondary">
+                      {p.images.length ? (
+                        <img
+                          src={p.images[0]}
+                          alt={p.name}
+                          // Archived listings are blurred rather than hidden. The
+                          // slight scale hides the transparent edge blur leaves.
+                          className={`size-full object-cover transition-transform duration-300 ${
+                            isArchived(p.status)
+                              ? "scale-110 blur-[6px] saturate-50"
+                              : "group-hover:scale-[1.03]"
+                          }`}
+                        />
+                      ) : (
+                        <div className="grid size-full place-items-center text-muted-foreground">
+                          <Building2 className="size-8" />
+                        </div>
+                      )}
+                      {isArchived(p.status) && (
+                        <div className="absolute inset-0 grid place-items-center bg-overlay">
+                          <span className="rounded-full bg-background/95 px-4 py-1.5 font-display text-lg tracking-wide">
+                            {p.status}
+                          </span>
+                        </div>
+                      )}
+                      <div className="absolute left-3 top-3">
+                        <StatusPill
+                          tone={
+                            isArchived(p.status)
+                              ? "neutral"
+                              : p.listing === "Rent"
+                                ? "accent"
+                                : "success"
+                          }
                         >
-                          <ExternalLink />
-                          View on site
-                        </a>
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditing(p)}
-                      disabled={!canEdit}
+                          {isArchived(p.status) ? p.status : `For ${p.listing.toLowerCase()}`}
+                        </StatusPill>
+                      </div>
+                      {(enquiries.get(p.id) ?? 0) > 0 && (
+                        <Link
+                          to="/leads"
+                          search={{ property: p.id }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground transition-transform hover:scale-105"
+                          title="See the enquiries for this listing"
+                        >
+                          <MessageSquare className="size-3" />
+                          {enquiries.get(p.id)}
+                        </Link>
+                      )}
+                      {p.images.length > 1 && (
+                        <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-overlay px-2 py-1 text-[11px] font-semibold text-white">
+                          <Images className="size-3" />
+                          {p.images.length}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className={`flex flex-1 flex-col p-5 ${isArchived(p.status) ? "opacity-70" : ""}`}
                     >
-                      <Pencil />
-                      Edit
-                    </Button>
-                  </div>
-                </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <h2 className="font-display text-xl leading-tight">{p.name}</h2>
+                        <StatusPill>{p.kind}</StatusPill>
+                      </div>
+                      <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                        <MapPin className="mt-px size-3.5 shrink-0" />
+                        <span>{p.address}</span>
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        {p.bedrooms != null && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <BedDouble className="size-3.5" />
+                            {p.bedrooms} bed
+                          </span>
+                        )}
+                        {p.bathrooms != null && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Bath className="size-3.5" />
+                            {p.bathrooms} bath
+                          </span>
+                        )}
+                        {p.area != null && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Ruler className="size-3.5" />
+                            {p.area.toLocaleString("en-US")} sq ft
+                          </span>
+                        )}
+                      </div>
+                      {p.details && (
+                        <p className="mt-3 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                          {p.details}
+                        </p>
+                      )}
+                      {p.features && p.features.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {p.features.slice(0, 3).map((f) => (
+                            <span
+                              key={f}
+                              className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground"
+                            >
+                              {f}
+                            </span>
+                          ))}
+                          {p.features.length > 3 && (
+                            <span className="px-1 py-0.5 text-[10px] text-muted-foreground">
+                              +{p.features.length - 3} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <div className="mt-auto flex items-end justify-between border-t border-border pt-4">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-[.14em] text-muted-foreground">
+                            {isArchived(p.status)
+                              ? p.status === "Sold"
+                                ? "Sold for"
+                                : "Let at"
+                              : p.listing === "Rent"
+                                ? "Rent"
+                                : "Asking price"}
+                          </p>
+                          <p
+                            className={`mt-1 font-semibold ${p.price === undefined || p.price === null ? "text-muted-foreground" : ""}`}
+                          >
+                            {priceLabel(p)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {p.slug && (
+                            <Button variant="ghost" size="sm" asChild>
+                              <a
+                                href={`${SITE_URL}/properties/${p.slug}`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <ExternalLink />
+                                View on site
+                              </a>
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditing(p)}
+                            disabled={!canEdit}
+                          >
+                            <Pencil />
+                            Edit
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
               </div>
-            </Card>
+            </section>
           ))}
         </div>
       ) : (
@@ -398,7 +490,7 @@ function PropertiesPage() {
           title={properties.length ? "No properties match" : "No properties yet"}
           description={
             properties.length
-              ? "Try a different search, type, or rent/sale filter."
+              ? "Try a different search, type, region, or rent/sale filter."
               : "Add your first listing to start building the portfolio."
           }
           action={

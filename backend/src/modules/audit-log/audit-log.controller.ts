@@ -7,7 +7,7 @@ import { QueryAuditLogDto } from './dto/query-audit-log.dto';
 
 @ApiTags('audit-logs')
 @ApiBearerAuth()
-@Roles('admin')
+@Roles('region_head')
 @Controller('audit-logs')
 export class AuditLogController {
   constructor(private readonly auditLogs: AuditLogService) {}

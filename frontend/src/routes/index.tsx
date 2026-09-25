@@ -20,6 +20,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { isGlobalRole } from "@/data/crm";
+import { fetchRegions, type RegionSummary } from "@/lib/api/regions";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useCrm } from "@/lib/crm-context";
 import {
@@ -32,6 +34,7 @@ import {
   summarise,
 } from "@/lib/dashboard";
 import { AnimatedNumber, EmptyState, PageHeader, StatCard } from "@/components/crm/Primitives";
+import { RegionCharts } from "@/components/crm/RegionCharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -61,8 +64,27 @@ const tooltipStyle = {
 };
 
 function Dashboard() {
-  const { tasks, toggleTask, leads, leadsStatus, properties, propertiesStatus } = useCrm();
-  const { user } = useAuth();
+  const { tasks, toggleTask, leads, leadsStatus, properties, propertiesStatus, role } = useCrm();
+  const { user, token } = useAuth();
+
+  // The region section is for owners and system admins, the only roles whose
+  // leads and listings span regions. `/regions` supplies the team counts.
+  const global = isGlobalRole(role);
+  const [regions, setRegions] = useState<RegionSummary[] | null>(null);
+  useEffect(() => {
+    if (!token || !global) return;
+    let cancelled = false;
+    fetchRegions(token)
+      .then((list) => {
+        if (!cancelled) setRegions(list);
+      })
+      .catch(() => {
+        if (!cancelled) setRegions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, global]);
 
   // Read once on mount rather than during render: the server and the browser
   // can disagree about the time, and every figure below is dated.
@@ -150,6 +172,13 @@ function Dashboard() {
           </>
         )}
       </section>
+
+      {global &&
+        (loading || regions === null ? (
+          <Card className="mt-5 h-[340px] animate-pulse bg-secondary/50" />
+        ) : regions.length > 0 && now ? (
+          <RegionCharts regions={regions} leads={leads} properties={properties} now={now} />
+        ) : null)}
 
       <section className="mt-5 grid gap-5 xl:grid-cols-[1.65fr_1fr]">
         <Card>

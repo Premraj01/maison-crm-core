@@ -21,7 +21,8 @@ export interface LeadQuery {
 }
 
 /** Fields the server owns — never sent from the CRM's forms. */
-type ServerOwned = "id" | "createdAt" | "updatedAt" | "property" | "orgId" | "lastContactAt";
+type ServerOwned =
+  "id" | "createdAt" | "updatedAt" | "property" | "orgId" | "regionId" | "lastContactAt";
 
 export type LeadDraft = Partial<Omit<Lead, ServerOwned>>;
 
